@@ -71,45 +71,51 @@
   <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
     <!-- 1. LOGIN VIEW -->
-    <div id="view-login" class="max-w-4xl mx-auto my-6 space-y-6 hidden">
+    <div id="view-login" class="max-w-xl mx-auto my-6 hidden">
+      <div class="bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+        
+        <!-- Upper Blue Section with College Logo (Left), Complete Name (Center), Dept Logo (Right) -->
+        <div class="bg-gradient-to-r from-blue-800 via-indigo-800 to-slate-900 p-6 sm:p-8 text-white">
+          <!-- Top Row with Logos & College Name -->
+          <div class="flex items-center justify-between gap-3 sm:gap-4">
+            <!-- College Logo on Left -->
+            <div class="flex-shrink-0 bg-white rounded-2xl p-1.5 shadow-md">
+              <img src="/college_logo.jpg" alt="RGMCET Logo" class="h-14 sm:h-16 w-auto object-contain">
+            </div>
 
-      <!-- College Banner Header: College Logo (Left), Full College Name (Center), Dept Logo (Right) -->
-      <div class="bg-white rounded-2xl shadow-md border border-slate-200/80 p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <!-- College Logo (Left) -->
-        <div class="flex-shrink-0">
-          <img src="/college_logo.jpg" alt="RGMCET Emblem" class="h-20 sm:h-24 w-auto object-contain mx-auto">
-        </div>
+            <!-- Complete College Name in Middle -->
+            <div class="flex-1 text-center px-1">
+              <h1 class="text-xs sm:text-sm md:text-base font-black text-white uppercase tracking-tight leading-snug">
+                Rajeev Gandhi Memorial College of Engineering & Technology
+              </h1>
+              <p class="text-[10px] sm:text-xs font-bold text-amber-300 tracking-wider mt-0.5 uppercase">
+                (Autonomous)
+              </p>
+              <p class="text-[9px] sm:text-[10px] text-blue-200 mt-0.5 hidden sm:block">
+                Approved by AICTE &bull; Affiliated to JNTUA &bull; Accredited by NAAC 'A+' Grade
+              </p>
+              <p class="text-[9px] sm:text-[10px] text-blue-200">
+                Nandyal - 518501, A.P.
+              </p>
+            </div>
 
-        <!-- Complete College Name (Middle) -->
-        <div class="flex-1 text-center px-2">
-          <h1 class="text-base sm:text-lg md:text-xl font-black text-slate-900 uppercase tracking-tight leading-snug">
-            Rajeev Gandhi Memorial College of Engineering & Technology
-          </h1>
-          <p class="text-xs sm:text-sm font-extrabold text-blue-700 tracking-wider mt-1 uppercase">
-            (Autonomous)
-          </p>
-          <p class="text-[11px] text-slate-600 mt-1">
-            Approved by AICTE, New Delhi &bull; Affiliated to JNTUA, Ananthapuramu &bull; Accredited by NAAC with 'A+' Grade
-          </p>
-          <p class="text-[11px] text-slate-500 font-medium">
-            Nandyal - 518501, Andhra Pradesh
-          </p>
-        </div>
-
-        <!-- Dept. of CSE Logo (Right) -->
-        <div class="flex-shrink-0">
-          <img src="/cse_logo.png" alt="Dept. of CSE Logo" class="h-20 sm:h-24 w-auto object-contain mx-auto">
-        </div>
-      </div>
-
-      <!-- Login Card -->
-      <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
-        <div class="bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 p-6 sm:p-7 text-white text-center">
-          <div class="text-xl sm:text-2xl font-black tracking-tight text-white uppercase">
-            Dept. of CSE
+            <!-- Dept Logo on Right -->
+            <div class="flex-shrink-0 bg-white rounded-2xl p-1.5 shadow-md">
+              <img src="/cse_logo.png" alt="Dept of CSE Logo" class="h-14 sm:h-16 w-auto object-contain">
+            </div>
           </div>
-          <div class="text-base sm:text-lg font-bold text-blue-200 mt-0.5 tracking-wide">
-            Faculty Selection
+
+          <!-- Divider -->
+          <div class="my-4 border-t border-white/20"></div>
+
+          <!-- Dept of CSE in Above Line & Faculty Selection in Next Line -->
+          <div class="text-center">
+            <h2 class="text-lg sm:text-xl font-black uppercase tracking-wider text-white">
+              Dept. of CSE
+            </h2>
+            <h3 class="text-sm sm:text-base font-bold text-blue-200 tracking-wide mt-0.5">
+              Faculty Selection
+            </h3>
           </div>
         </div>
 
