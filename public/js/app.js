@@ -161,12 +161,7 @@ function renderHeaderUserSection() {
   if (!header) return;
 
   if (!STATE.user) {
-    header.innerHTML = `
-      <div class="text-xs text-slate-400 flex items-center gap-2">
-        <i class="fa-solid fa-lock text-slate-500"></i>
-        <span>Authentication Required</span>
-      </div>
-    `;
+    header.innerHTML = '';
     return;
   }
 
