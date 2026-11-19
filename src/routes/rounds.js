@@ -36,7 +36,7 @@ router.get('/', (req, res) => {
 
     // Calculate selection count for each round
     const enriched = rounds.map(r => {
-      const count = db.prepare('SELECT COUNT(*) as count FROM selections WHERE selection_round_id = ? AND status = "CONFIRMED"').get(r.id).count;
+      const count = db.prepare("SELECT COUNT(*) as count FROM selections WHERE selection_round_id = ? AND status = 'CONFIRMED'").get(r.id).count;
       return { ...r, total_confirmed_selections: count };
     });
 

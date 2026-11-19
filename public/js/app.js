@@ -98,6 +98,12 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeModal();
 });
 
+// Escape single & double quotes for inline HTML attributes
+function escapeQuote(str) {
+  if (!str) return '';
+  return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
 // --- API Client ---
 async function apiRequest(endpoint, method = 'GET', body = null) {
   const headers = {

@@ -2003,11 +2003,18 @@ async function deleteRoundRecord(id) {
   }
 }
 
+// Defensive quote escaper for admin inline event handlers
+function escapeQuote(str) {
+  if (!str) return '';
+  return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
 // =========================================================================
 // 7. LIVE SELECTIONS (Master Live Control Center & Real-Time Monitoring)
 // =========================================================================
 async function loadAdminLiveSelections() {
   const container = document.getElementById('admin-tab-content');
+  if (!container) return;
   container.innerHTML = `<div class="py-12 text-center text-slate-400"><i class="fa-solid fa-circle-notch fa-spin text-2xl"></i></div>`;
 
   try {
@@ -2017,7 +2024,16 @@ async function loadAdminLiveSelections() {
       STATE.liveInterval = setInterval(fetchLiveSelections, 3500);
     }
   } catch (err) {
-    container.innerHTML = `<div class="p-6 bg-rose-50 text-rose-700 rounded-2xl text-xs">${err.message}</div>`;
+    console.error('Failed to load live selections:', err);
+    container.innerHTML = `
+      <div class="p-6 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs space-y-2">
+        <div class="font-bold text-sm">Failed to load Live Selections</div>
+        <div>${err.message || 'An unexpected error occurred while contacting the server.'}</div>
+        <button onclick="loadAdminLiveSelections()" class="mt-2 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold cursor-pointer transition-all">
+          <i class="fa-solid fa-rotate-right mr-1"></i> Try Again
+        </button>
+      </div>
+    `;
   }
 }
 
@@ -2027,199 +2043,245 @@ async function fetchLiveSelections() {
       api.get('/api/selections/live'),
       api.get('/api/rounds')
     ]);
-    ADMIN_DATA.selections = selRes ? selRes.selections : [];
+    ADMIN_DATA.selections = (selRes && selRes.selections) ? selRes.selections : [];
     if (roundsRes && roundsRes.rounds) {
       ADMIN_DATA.rounds = roundsRes.rounds;
     }
     renderLiveSelectionsList();
   } catch (err) {
     console.error('Error fetching live selections:', err);
+    const container = document.getElementById('admin-tab-content');
+    if (container && container.innerHTML.includes('fa-circle-notch')) {
+      container.innerHTML = `
+        <div class="p-6 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs space-y-2">
+          <div class="font-bold text-sm">Failed to load Live Selections</div>
+          <div>${err.message || 'An unexpected error occurred while contacting the server.'}</div>
+          <button onclick="loadAdminLiveSelections()" class="mt-2 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold cursor-pointer transition-all">
+            <i class="fa-solid fa-rotate-right mr-1"></i> Try Again
+          </button>
+        </div>
+      `;
+    }
   }
 }
 
 function renderLiveSelectionsList() {
-  const container = document.getElementById('admin-tab-content');
-  const selections = ADMIN_DATA.selections || [];
-  const rounds = ADMIN_DATA.rounds || [];
+  try {
+    const container = document.getElementById('admin-tab-content');
+    if (!container) return;
 
-  if (!ADMIN_DATA.selectedLiveRoundId && rounds.length > 0) {
-    const sem6Round = rounds.find(r => r.academic_year === 3 && r.semester === 6);
-    ADMIN_DATA.selectedLiveRoundId = sem6Round ? sem6Round.id : rounds[0].id;
-  }
-  const currentRound = rounds.find(r => r.id === ADMIN_DATA.selectedLiveRoundId) || rounds[0];
-  const isLiveActive = currentRound && currentRound.status === 'ACTIVE';
-  const isPaused = currentRound && currentRound.status === 'PAUSED';
-  const confirmedCount = selections.filter(s => s.status === 'CONFIRMED').length;
+    const selections = ADMIN_DATA.selections || [];
+    const rounds = ADMIN_DATA.rounds || [];
 
-  container.innerHTML = `
-    <div class="space-y-6">
-      
-      <!-- Master Live Selection Control Panel -->
-      <div class="bg-gradient-to-r ${isLiveActive ? 'from-emerald-950 via-slate-900 to-emerald-950 border-emerald-500/40 shadow-emerald-900/20' : (isPaused ? 'from-amber-950 via-slate-900 to-amber-950 border-amber-500/40 shadow-amber-900/20' : 'from-slate-900 via-indigo-950 to-slate-900 border-slate-700')} p-6 rounded-3xl border shadow-xl text-white space-y-5">
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+    if (!ADMIN_DATA.selectedLiveRoundId && rounds.length > 0) {
+      const sem6Round = rounds.find(r => r.academic_year === 3 && r.semester === 6);
+      ADMIN_DATA.selectedLiveRoundId = sem6Round ? sem6Round.id : rounds[0].id;
+    }
+    const currentRound = (rounds.length > 0)
+      ? (rounds.find(r => r.id === ADMIN_DATA.selectedLiveRoundId) || rounds[0])
+      : null;
+    const isLiveActive = currentRound ? currentRound.status === 'ACTIVE' : false;
+    const isPaused = currentRound ? currentRound.status === 'PAUSED' : false;
+    const confirmedCount = Array.isArray(selections) ? selections.filter(s => s.status === 'CONFIRMED').length : 0;
+
+    container.innerHTML = `
+      <div class="space-y-6">
+        
+        <!-- Master Live Selection Control Panel -->
+        <div class="bg-gradient-to-r ${isLiveActive ? 'from-emerald-950 via-slate-900 to-emerald-950 border-emerald-500/40 shadow-emerald-900/20' : (isPaused ? 'from-amber-950 via-slate-900 to-amber-950 border-amber-500/40 shadow-amber-900/20' : 'from-slate-900 via-indigo-950 to-slate-900 border-slate-700')} p-6 rounded-3xl border shadow-xl text-white space-y-5">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <div class="flex flex-wrap items-center gap-2.5">
+                <span class="w-3.5 h-3.5 rounded-full ${isLiveActive ? 'bg-emerald-400 animate-ping' : (isPaused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
+                <h3 class="text-base sm:text-lg font-black tracking-tight text-white uppercase">
+                  Live Selection Master Control Center
+                </h3>
+                <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isLiveActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isPaused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
+                  ${currentRound ? currentRound.status : 'NOT CONFIGURED'}
+                </span>
+              </div>
+              <p class="text-xs ${isLiveActive ? 'text-emerald-200' : 'text-slate-300'} mt-1">
+                ${isLiveActive 
+                  ? '🟢 LIVE ACTIVE: All 410 students (Group 1 & Group 2) can now submit faculty choices in real-time.' 
+                  : (isPaused 
+                      ? '⏸️ PAUSED: Student selection is temporarily frozen. Students cannot submit until you resume.' 
+                      : '⏹️ STOPPED / NOT STARTED: Click the green "START LIVE SELECTION" button to open the portal for students.')}
+              </p>
+            </div>
+
+            <!-- Controls: Select Round & Action Buttons -->
+            <div class="flex flex-wrap items-center gap-3">
+              ${rounds.length > 1 ? `
+                <select onchange="changeLiveRound(this.value)" class="py-2.5 px-3 bg-slate-800 border border-slate-700 text-white rounded-xl text-xs font-semibold">
+                  ${rounds.map(r => `
+                    <option value="${r.id}" ${currentRound && r.id === currentRound.id ? 'selected' : ''}>
+                      ${r.name} (${r.status})
+                    </option>
+                  `).join('')}
+                </select>
+              ` : ''}
+
+              ${currentRound ? (
+                !isLiveActive ? (
+                  isPaused ? `
+                    <button onclick="toggleLiveSelection(${currentRound.id}, 'ACTIVE')" class="py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95 cursor-pointer">
+                      <i class="fa-solid fa-play text-sm"></i>
+                      <span>RESUME LIVE SELECTION</span>
+                    </button>
+                    <button onclick="toggleLiveSelection(${currentRound.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
+                      <i class="fa-solid fa-stop"></i>
+                      <span>End / Close Round</span>
+                    </button>
+                  ` : `
+                    <button onclick="toggleLiveSelection(${currentRound.id}, 'ACTIVE')" class="py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95 cursor-pointer">
+                      <i class="fa-solid fa-play text-sm"></i>
+                      <span>START LIVE SELECTION</span>
+                    </button>
+                  `
+                ) : `
+                  <button onclick="toggleLiveSelection(${currentRound.id}, 'PAUSED')" class="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
+                    <i class="fa-solid fa-pause"></i>
+                    <span>Pause Selection</span>
+                  </button>
+                  <button onclick="toggleLiveSelection(${currentRound.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
+                    <i class="fa-solid fa-stop"></i>
+                    <span>End / Close Round</span>
+                  </button>
+                `
+              ) : `
+                <button onclick="switchAdminTab('rounds')" class="py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
+                  <i class="fa-solid fa-plus"></i>
+                  <span>Create Selection Round</span>
+                </button>
+              `}
+            </div>
+          </div>
+
+          <!-- Live Statistics Bar -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-white/10 text-xs">
+            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+              <div class="text-slate-400 text-[11px] font-semibold">Active Selection Round</div>
+              <div class="font-bold text-white mt-0.5 truncate">${currentRound ? currentRound.name : 'None'}</div>
+            </div>
+            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+              <div class="text-slate-400 text-[11px] font-semibold">3rd Year Student Cohort</div>
+              <div class="font-bold text-white mt-0.5">410 (G1: 230 | G2: 180)</div>
+            </div>
+            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+              <div class="text-slate-400 text-[11px] font-semibold">Confirmed Course Claims</div>
+              <div class="font-bold text-emerald-400 mt-0.5">${confirmedCount} Selections</div>
+            </div>
+            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
+              <div class="text-slate-400 text-[11px] font-semibold">Portal Gateway Status</div>
+              <div class="font-bold ${isLiveActive ? 'text-emerald-300' : 'text-amber-300'} mt-0.5">
+                ${isLiveActive ? 'OPEN & ACCEPTING' : 'LOCKED (WAITING)'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Stream Header -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div class="flex flex-wrap items-center gap-2.5">
-              <span class="w-3.5 h-3.5 rounded-full ${isLiveActive ? 'bg-emerald-400 animate-ping' : (isPaused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
-              <h3 class="text-base sm:text-lg font-black tracking-tight text-white uppercase">
-                Live Selection Master Control Center
-              </h3>
-              <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isLiveActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isPaused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
-                ${currentRound ? currentRound.status : 'NOT CONFIGURED'}
-              </span>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full ${isLiveActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}"></span>
+              <h3 class="text-base font-bold text-slate-900">Live Selections Incoming Stream</h3>
             </div>
-            <p class="text-xs ${isLiveActive ? 'text-emerald-200' : 'text-slate-300'} mt-1">
-              ${isLiveActive 
-                ? '🟢 LIVE ACTIVE: All 410 students (Group 1 & Group 2) can now submit faculty choices in real-time.' 
-                : (isPaused 
-                    ? '⏸️ PAUSED: Student selection is temporarily frozen. Students cannot submit until you resume.' 
-                    : '⏹️ STOPPED / NOT STARTED: Click the green "START LIVE SELECTION" button to open the portal for students.')}
-            </p>
+            <p class="text-xs text-slate-500 mt-0.5">Real-time server-side FCFS course allocations. Auto-refreshes every 3.5 seconds.</p>
           </div>
-
-          <!-- Controls: Select Round & Action Buttons -->
-          <div class="flex flex-wrap items-center gap-3">
-            ${rounds.length > 1 ? `
-              <select onchange="changeLiveRound(this.value)" class="py-2.5 px-3 bg-slate-800 border border-slate-700 text-white rounded-xl text-xs font-semibold">
-                ${rounds.map(r => `
-                  <option value="${r.id}" ${currentRound && r.id === currentRound.id ? 'selected' : ''}>
-                    ${r.name} (${r.status})
-                  </option>
-                `).join('')}
-              </select>
-            ` : ''}
-
-            ${currentRound ? (
-              !isLiveActive ? `
-                <button onclick="toggleLiveSelection(${currentRound.id}, 'ACTIVE')" class="py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95 cursor-pointer">
-                  <i class="fa-solid fa-play text-sm"></i>
-                  <span>START LIVE SELECTION</span>
-                </button>
-              ` : `
-                <button onclick="toggleLiveSelection(${currentRound.id}, 'PAUSED')" class="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
-                  <i class="fa-solid fa-pause"></i>
-                  <span>Pause Selection</span>
-                </button>
-                <button onclick="toggleLiveSelection(${currentRound.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
-                  <i class="fa-solid fa-stop"></i>
-                  <span>End / Close Round</span>
-                </button>
-              `
-            ) : ''}
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>Last sync: ${new Date().toLocaleTimeString()}</span>
           </div>
         </div>
 
-        <!-- Live Statistics Bar -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-white/10 text-xs">
-          <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div class="text-slate-400 text-[11px] font-semibold">Active Selection Round</div>
-            <div class="font-bold text-white mt-0.5 truncate">${currentRound ? currentRound.name : 'None'}</div>
-          </div>
-          <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div class="text-slate-400 text-[11px] font-semibold">3rd Year Student Cohort</div>
-            <div class="font-bold text-white mt-0.5">410 (G1: 230 | G2: 180)</div>
-          </div>
-          <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div class="text-slate-400 text-[11px] font-semibold">Confirmed Course Claims</div>
-            <div class="font-bold text-emerald-400 mt-0.5">${confirmedCount} Selections</div>
-          </div>
-          <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-            <div class="text-slate-400 text-[11px] font-semibold">Portal Gateway Status</div>
-            <div class="font-bold ${isLiveActive ? 'text-emerald-300' : 'text-amber-300'} mt-0.5">
-              ${isLiveActive ? 'OPEN & ACCEPTING' : 'LOCKED (WAITING)'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live Stream Header -->
-      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full ${isLiveActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}"></span>
-            <h3 class="text-base font-bold text-slate-900">Live Selections Incoming Stream</h3>
-          </div>
-          <p class="text-xs text-slate-500 mt-0.5">Real-time server-side FCFS course allocations. Auto-refreshes every 3.5 seconds.</p>
-        </div>
-        <div class="flex items-center gap-2 text-xs text-slate-500">
-          <i class="fa-solid fa-clock-rotate-left"></i>
-          <span>Last sync: ${new Date().toLocaleTimeString()}</span>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
-              <tr>
-                <th class="py-3.5 px-6">Student</th>
-                <th class="py-3.5 px-6">Subject</th>
-                <th class="py-3.5 px-6">Assigned Faculty</th>
-                <th class="py-3.5 px-6">Server Timestamp</th>
-                <th class="py-3.5 px-6">Status</th>
-                <th class="py-3.5 px-6 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              ${selections.length === 0 ? `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
                 <tr>
-                  <td colspan="6" class="py-16 text-center text-slate-400">
-                    <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg mb-2">
-                      <i class="fa-solid fa-satellite-dish"></i>
-                    </div>
-                    <div class="font-bold text-slate-700">No Selections Recorded Yet</div>
-                    <div class="text-xs text-slate-400 mt-0.5">As students confirm faculty selections, they will appear here in real time.</div>
-                  </td>
+                  <th class="py-3.5 px-6">Student</th>
+                  <th class="py-3.5 px-6">Subject</th>
+                  <th class="py-3.5 px-6">Assigned Faculty</th>
+                  <th class="py-3.5 px-6">Server Timestamp</th>
+                  <th class="py-3.5 px-6">Status</th>
+                  <th class="py-3.5 px-6 text-right">Actions</th>
                 </tr>
-              ` : selections.map(s => `
-                <tr class="hover:bg-slate-50/80 transition-colors">
-                  <td class="py-3.5 px-6">
-                    <div class="font-bold text-slate-900">${s.student_name}</div>
-                    <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.student_reg_no} &bull; Sec ${s.student_section}</div>
-                  </td>
-                  <td class="py-3.5 px-6">
-                    <div class="font-bold text-slate-900">${s.subject_name}</div>
-                    <div class="mono-font text-[11px] text-slate-500">${s.subject_code}</div>
-                  </td>
-                  <td class="py-3.5 px-6">
-                    <div class="font-bold text-slate-900">${s.faculty_name}</div>
-                    <div class="text-[11px] text-slate-500">${s.faculty_designation}</div>
-                  </td>
-                  <td class="py-3.5 px-6 mono-font text-[11px] text-slate-600">
-                    ${new Date(s.reserved_at).toLocaleString()}
-                  </td>
-                  <td class="py-3.5 px-6">
-                    ${s.status === 'CONFIRMED' ? `
-                      <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                        CONFIRMED
-                      </span>
-                    ` : `
-                      <div>
-                        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
-                          CANCELLED
-                        </span>
-                        <div class="text-[10px] text-slate-500 mt-1 max-w-xs truncate" title="${s.cancellation_reason}">
-                          Reason: "${s.cancellation_reason}"
-                        </div>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${selections.length === 0 ? `
+                  <tr>
+                    <td colspan="6" class="py-16 text-center text-slate-400">
+                      <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg mb-2">
+                        <i class="fa-solid fa-satellite-dish"></i>
                       </div>
-                    `}
-                  </td>
-                  <td class="py-3.5 px-6 text-right">
-                    ${s.status === 'CONFIRMED' ? `
-                      <button onclick="openCancelSelectionModal(${s.id}, '${escapeQuote(s.student_name)}', '${escapeQuote(s.student_reg_no)}', '${escapeQuote(s.faculty_name)}', '${escapeQuote(s.subject_code)}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors">
-                        Cancel Selection
-                      </button>
-                    ` : `
-                      <span class="text-slate-400 text-xs italic">Cancelled</span>
-                    `}
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+                      <div class="font-bold text-slate-700">No Selections Recorded Yet</div>
+                      <div class="text-xs text-slate-400 mt-0.5">As students confirm faculty selections, they will appear here in real time.</div>
+                    </td>
+                  </tr>
+                ` : selections.map(s => `
+                  <tr class="hover:bg-slate-50/80 transition-colors">
+                    <td class="py-3.5 px-6">
+                      <div class="font-bold text-slate-900">${s.student_name}</div>
+                      <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.student_reg_no} &bull; Sec ${s.student_section}</div>
+                    </td>
+                    <td class="py-3.5 px-6">
+                      <div class="font-bold text-slate-900">${s.subject_name}</div>
+                      <div class="mono-font text-[11px] text-slate-500">${s.subject_code}</div>
+                    </td>
+                    <td class="py-3.5 px-6">
+                      <div class="font-bold text-slate-900">${s.faculty_name}</div>
+                      <div class="text-[11px] text-slate-500">${s.faculty_designation}</div>
+                    </td>
+                    <td class="py-3.5 px-6 mono-font text-[11px] text-slate-600">
+                      ${new Date(s.reserved_at).toLocaleString()}
+                    </td>
+                    <td class="py-3.5 px-6">
+                      ${s.status === 'CONFIRMED' ? `
+                        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                          CONFIRMED
+                        </span>
+                      ` : `
+                        <div>
+                          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800">
+                            CANCELLED
+                          </span>
+                          <div class="text-[10px] text-slate-500 mt-1 max-w-xs truncate" title="${s.cancellation_reason}">
+                            Reason: "${s.cancellation_reason}"
+                          </div>
+                        </div>
+                      `}
+                    </td>
+                    <td class="py-3.5 px-6 text-right">
+                      ${s.status === 'CONFIRMED' ? `
+                        <button onclick="openCancelSelectionModal(${s.id}, '${escapeQuote(s.student_name)}', '${escapeQuote(s.student_reg_no)}', '${escapeQuote(s.faculty_name)}', '${escapeQuote(s.subject_code)}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold transition-colors">
+                          Cancel Selection
+                        </button>
+                      ` : `
+                        <span class="text-slate-400 text-xs italic">Cancelled</span>
+                      `}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
+  } catch (renderErr) {
+    console.error('Error rendering live selections:', renderErr);
+    const container = document.getElementById('admin-tab-content');
+    if (container) {
+      container.innerHTML = `
+        <div class="p-6 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs space-y-2">
+          <div class="font-bold text-sm">Rendering Error in Live Selections</div>
+          <div>${renderErr.message}</div>
+          <button onclick="loadAdminLiveSelections()" class="mt-2 px-3 py-1.5 bg-rose-600 text-white rounded-lg font-bold">Retry</button>
+        </div>
+      `;
+    }
+  }
 }
 
 function changeLiveRound(roundId) {
