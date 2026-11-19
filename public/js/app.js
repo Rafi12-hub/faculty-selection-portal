@@ -124,6 +124,9 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     const data = await res.json();
 
     if (res.status === 401) {
+      if (endpoint.includes('/api/auth/login')) {
+        throw new Error(data.message || 'Invalid credentials.');
+      }
       handleLogout(false);
       showToast('Session expired. Please log in again.', 'warning');
       return null;
