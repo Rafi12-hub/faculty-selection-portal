@@ -53,19 +53,34 @@ async function refreshStudentLiveSeats() {
 
     if (mapRes && mapRes.mappings) {
       STUDENT_MAPPINGS = mapRes.mappings;
+      let needsRerender = false;
+
       STUDENT_MAPPINGS.forEach(m => {
+        const isFull = m.available_seats <= 0;
+        const hasConfirmed = STUDENT_SELECTIONS.some(s => s.mapping_id === m.id && s.status === 'CONFIRMED');
+
+        // If seats filled while student had it marked as pending, auto-clear and prompt to select another
+        if (isFull && !hasConfirmed && PENDING_SELECTIONS[m.subject_id] === m.id) {
+          delete PENDING_SELECTIONS[m.subject_id];
+          needsRerender = true;
+          showToast(`Seat capacity for ${m.faculty_name} just filled up! Please select an available faculty.`, 'warning');
+        }
+
         const badge = document.getElementById(`seat-badge-${m.id}`);
         if (badge) {
-          const isFull = m.available_seats <= 0;
-          if (isFull) {
-            badge.className = 'text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700';
-            badge.textContent = 'FULL';
+          if (isFull && !hasConfirmed) {
+            badge.className = 'text-[11px] font-black px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 inline-block';
+            badge.textContent = 'SEATS FULL';
           } else {
-            badge.className = 'text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700';
-            badge.textContent = `${m.available_seats} / ${m.capacity} seats`;
+            badge.className = 'text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+            badge.textContent = `${m.available_seats} / ${m.capacity} seats left`;
           }
         }
       });
+
+      if (needsRerender) {
+        renderStudentSubjects();
+      }
     }
 
     if (latestRound) {
@@ -276,8 +291,11 @@ function renderStudentSubjects() {
     // Get active mappings for this subject
     const subjectMappings = STUDENT_MAPPINGS.filter(m => m.subject_id === subject.id && m.status === 'ACTIVE');
 
+    // Check if any mappings in this subject are full
+    const hasFullFaculty = subjectMappings.some(m => m.available_seats <= 0);
+
     return `
-      <div class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-slate-200'} shadow-sm p-6 space-y-4">
+      <div id="subject-card-${subject.id}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : (hasFullFaculty && !PENDING_SELECTIONS[subject.id] ? 'border-amber-300 ring-2 ring-amber-400/20' : 'border-slate-200')} shadow-sm p-6 space-y-4 transition-all">
         <div class="flex items-start justify-between gap-3">
           <div>
             <h3 class="text-base sm:text-lg font-bold text-slate-900">
@@ -296,6 +314,16 @@ function renderStudentSubjects() {
           `}
         </div>
 
+        ${(!hasSelection && hasFullFaculty && !PENDING_SELECTIONS[subject.id]) ? `
+          <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+              <span>One or more faculty members are full. <strong>Please select from the remaining available faculty members below.</strong></span>
+            </div>
+            <span class="px-2 py-0.5 bg-amber-200 text-amber-900 font-bold rounded text-[10px] uppercase flex-shrink-0">Action Needed</span>
+          </div>
+        ` : ''}
+
         <!-- Faculty Radio Ovals List -->
         <div class="space-y-2.5 pt-1">
           ${subjectMappings.length === 0 ? `
@@ -303,10 +331,16 @@ function renderStudentSubjects() {
               No faculty assigned to this subject yet.
             </div>
           ` : subjectMappings.map(m => {
-      const isSelected = hasSelection
-        ? (confirmedSelection.mapping_id === m.id)
-        : (PENDING_SELECTIONS[subject.id] === m.id);
-      const isFull = m.available_seats <= 0 && !isSelected;
+      const isConfirmedForThis = hasSelection && confirmedSelection.mapping_id === m.id;
+      // It is full if available_seats <= 0 and student has NOT confirmed it
+      const isFull = (m.available_seats <= 0) && !isConfirmedForThis;
+
+      // Auto-clear from pending if it became full
+      if (isFull && PENDING_SELECTIONS[subject.id] === m.id) {
+        delete PENDING_SELECTIONS[subject.id];
+      }
+
+      const isSelected = isConfirmedForThis || (PENDING_SELECTIONS[subject.id] === m.id);
       const alias = FACULTY_ALIASES[m.faculty_code];
 
       return `
@@ -314,24 +348,24 @@ function renderStudentSubjects() {
                 onclick="${(isLiveActive && !hasSelection && !isFull) ? `setPendingSelection(${subject.id}, ${m.id})` : ''}"
                 class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected
           ? (hasSelection ? 'border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-400' : 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25')
-          : (isFull ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50/80 cursor-pointer' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))
+          : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm hover:shadow' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))
         }">
                 
                 <div class="flex items-center gap-3.5 min-w-0">
                   <!-- Radio Oval -->
                   <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected
-          ? (hasSelection ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-indigo-600 bg-indigo-600')
-          : (isFull ? 'border-slate-300 bg-slate-100' : 'border-slate-400 bg-white')
+          ? (hasSelection ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-indigo-600 bg-indigo-600 text-white')
+          : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')
         }">
                     ${isSelected
-          ? (hasSelection ? '<i class="fa-solid fa-check text-[10px]"></i>' : '<div class="w-2 h-2 rounded-full bg-white"></div>')
-          : ''
+          ? '<i class="fa-solid fa-check text-[10px]"></i>'
+          : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')
         }
                   </div>
 
                   <!-- Faculty Name & Alias -->
                   <div class="min-w-0">
-                    <div class="text-sm font-bold text-slate-900 truncate">
+                    <div class="text-sm font-bold ${isFull ? 'text-slate-500 line-through' : 'text-slate-900'} truncate">
                       ${alias ? `<span class="capitalize text-indigo-900">${alias}</span> <span class="text-slate-500 font-normal text-xs">(${m.faculty_name})</span>` : m.faculty_name}
                     </div>
                     <div class="text-[11px] text-slate-500 truncate mt-0.5">
@@ -343,13 +377,19 @@ function renderStudentSubjects() {
                 <!-- Seat Availability Badge -->
                 <div class="flex items-center gap-2 flex-shrink-0 pl-2">
                   ${isFull ? `
-                    <span id="seat-badge-${m.id}" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
-                      FULL
-                    </span>
+                    <div class="text-right">
+                      <span id="seat-badge-${m.id}" class="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 inline-block">
+                        SEATS FULL
+                      </span>
+                      <div class="text-[10px] text-rose-600 font-bold mt-0.5">Capacity reached</div>
+                    </div>
                   ` : `
-                    <span id="seat-badge-${m.id}" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${isSelected && hasSelection ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}">
-                      ${m.available_seats} / ${m.capacity} seats
-                    </span>
+                    <div class="text-right">
+                      <span id="seat-badge-${m.id}" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full ${isSelected && hasSelection ? 'bg-emerald-100 text-emerald-800' : (isSelected ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')}">
+                        ${m.available_seats} / ${m.capacity} seats left
+                      </span>
+                      ${!hasSelection && !isSelected ? `<div class="text-[10px] text-indigo-600 font-semibold mt-0.5">Click to choose</div>` : ''}
+                    </div>
                   `}
                 </div>
               </div>
@@ -545,12 +585,70 @@ async function executeBatchReservation() {
       switchStudentTab('selections');
     }
   } catch (err) {
+    closeModal();
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = `<i class="fa-solid fa-check-double"></i><span>Try Again</span>`;
     }
-    showToast(err.message || 'Could not complete selection.', 'error');
-    loadStudentData();
+
+    // Refresh live seat counts from server so student sees current vacancies immediately
+    await loadStudentData();
+
+    const fullSubId = err.full_subject_id;
+    const fullFacName = err.full_faculty_name;
+    const fullSubName = err.full_subject_name;
+
+    // Clear that full faculty choice from pending selections
+    if (fullSubId && PENDING_SELECTIONS[fullSubId]) {
+      delete PENDING_SELECTIONS[fullSubId];
+    }
+    renderStudentSubjects();
+
+    // High-visibility dialog prompting the student to choose another faculty
+    openModal({
+      title: 'Faculty Seat Capacity Reached',
+      maxWidth: 'max-w-md',
+      body: `
+        <div class="text-center space-y-4 py-2">
+          <div class="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto text-2xl shadow-inner border border-rose-100">
+            <i class="fa-solid fa-user-xmark"></i>
+          </div>
+          <div>
+            <h4 class="text-base font-black text-slate-900">Seat Capacity Filled!</h4>
+            <p class="text-xs text-rose-700 font-semibold mt-1">
+              ${err.message || 'All seats for this faculty were just claimed by other students.'}
+            </p>
+          </div>
+          <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 text-left space-y-2">
+            <div class="font-bold text-slate-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-circle-info text-blue-600"></i>
+              <span>Next Steps:</span>
+            </div>
+            <p>Another student claimed the last available seat before your submission arrived. Please select one of the other available teachers for <strong>${fullSubName || 'this subject'}</strong> to proceed.</p>
+          </div>
+        </div>
+      `,
+      footer: `
+        <button onclick="closeModalAndHighlightSubject(${fullSubId || 'null'})" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer transform hover:scale-[1.01]">
+          <span>Select Another Faculty for This Course</span>
+          <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      `
+    });
+  }
+}
+
+function closeModalAndHighlightSubject(subId) {
+  closeModal();
+  if (subId) {
+    setTimeout(() => {
+      const el = document.getElementById(`subject-card-${subId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-4', 'ring-amber-400');
+        setTimeout(() => el.classList.remove('ring-4', 'ring-amber-400'), 3500);
+      }
+    }, 150);
   }
 }
 
@@ -728,13 +826,13 @@ async function executeReservation(mappingId) {
       switchStudentTab('selections');
     }
   } catch (err) {
+    closeModal();
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = `<i class="fa-solid fa-check-double"></i><span>Try Again</span>`;
     }
-    showToast(err.message || 'Seat could not be reserved. It may have just been claimed by another student.', 'error');
-    // Refresh live data in background so student sees up-to-date capacity
-    loadStudentData();
+    showToast(err.message || 'Seat is full! Please choose another faculty.', 'error');
+    await loadStudentData();
   }
 }
 

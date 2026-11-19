@@ -133,7 +133,13 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     }
 
     if (!res.ok) {
-      throw new Error(data.message || 'Server returned an error.');
+      const err = new Error(data.message || 'Server returned an error.');
+      err.data = data;
+      err.full_subject_id = data.full_subject_id || null;
+      err.full_faculty_name = data.full_faculty_name || null;
+      err.full_subject_name = data.full_subject_name || null;
+      err.full_mapping_id = data.full_mapping_id || null;
+      throw err;
     }
 
     return data;

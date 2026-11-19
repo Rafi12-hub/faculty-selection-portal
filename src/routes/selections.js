@@ -297,7 +297,12 @@ router.post('/reserve-batch', requireStudent, (req, res) => {
         `).get(mapping.id).count;
 
         if (currentAllocations >= mapping.capacity) {
-          throw new Error(`Seats full for ${mapping.faculty_name} in ${mapping.subject_name} (${mapping.subject_code})! All ${mapping.capacity} seats taken.`);
+          const capErr = new Error(`Seats full for ${mapping.faculty_name} in ${mapping.subject_name} (${mapping.subject_code})! All ${mapping.capacity} seats have been taken. Please choose another faculty.`);
+          capErr.full_subject_id = mapping.subject_id;
+          capErr.full_subject_name = mapping.subject_name;
+          capErr.full_mapping_id = mapping.id;
+          capErr.full_faculty_name = mapping.faculty_name;
+          throw capErr;
         }
 
         // Insert
@@ -337,7 +342,11 @@ router.post('/reserve-batch', requireStudent, (req, res) => {
     console.error('Batch reservation failed:', error.message);
     res.status(409).json({
       success: false,
-      message: error.message || 'Batch selection could not be completed.'
+      message: error.message || 'Batch selection could not be completed.',
+      full_subject_id: error.full_subject_id || null,
+      full_subject_name: error.full_subject_name || null,
+      full_mapping_id: error.full_mapping_id || null,
+      full_faculty_name: error.full_faculty_name || null
     });
   }
 });
