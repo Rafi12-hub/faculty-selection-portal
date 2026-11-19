@@ -1163,12 +1163,16 @@ function renderStudentsList() {
   const container = document.getElementById('admin-tab-content');
   const students = ADMIN_DATA.students;
 
+  const totalCount = students.length;
+  const g1Count = students.filter(s => (s.section && s.section.includes('1')) || (s.reg_no <= '24091A05E2')).length;
+  const g2Count = students.filter(s => (s.section && s.section.includes('2')) || (s.reg_no > '24091A05E2')).length;
+
   container.innerHTML = `
     <div class="space-y-6">
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h3 class="text-base font-bold text-slate-900">Student Dataset Management</h3>
-          <p class="text-xs text-slate-500">Students cannot self-register. The administrator maintains and populates student credentials.</p>
+          <h3 class="text-base font-bold text-slate-900">3rd Year Student Dataset Management</h3>
+          <p class="text-xs text-slate-500">Students divided into 2 groups: Group 1 (501 to 5E2) and Group 2 / Group B (5E3 to 5KP).</p>
         </div>
         <div class="flex items-center gap-3">
           <button onclick="openBulkStudentsModal()" class="py-2 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors">
@@ -1182,14 +1186,63 @@ function renderStudentsList() {
         </div>
       </div>
 
+      <!-- Group Summary Banner -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 font-bold">
+            <i class="fa-solid fa-user-graduate"></i>
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">3rd Year Total</div>
+            <div class="text-lg font-black text-slate-900">${totalCount} Students</div>
+          </div>
+        </div>
+
+        <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-200 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
+            1
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-blue-700 uppercase tracking-wider">Group 1 (501 to 5E2)</div>
+            <div class="text-lg font-black text-blue-900">${g1Count} Students</div>
+          </div>
+        </div>
+
+        <div class="bg-purple-50/50 p-4 rounded-2xl border border-purple-200 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold">
+            2
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-purple-700 uppercase tracking-wider">Group 2 / Group B (Remaining)</div>
+            <div class="text-lg font-black text-purple-900">${g2Count} Students</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search & Group Filter Bar -->
+      <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center gap-3 justify-between">
+        <div class="relative w-full sm:w-72">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input type="text" id="admin-stu-search" placeholder="Search name or reg no..." oninput="filterAdminStudents()" class="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+        </div>
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <span class="text-xs text-slate-500 font-semibold whitespace-nowrap">Filter Group:</span>
+          <select id="admin-stu-group-filter" onchange="filterAdminStudents()" class="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+            <option value="ALL">All Groups (${totalCount})</option>
+            <option value="Group 1">Group 1 (501 to 5E2 - ${g1Count})</option>
+            <option value="Group 2">Group 2 / Group B (${g2Count})</option>
+          </select>
+        </div>
+      </div>
+
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
+          <table class="w-full text-left text-xs" id="admin-students-table">
             <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
               <tr>
                 <th class="py-3.5 px-6">Reg Number & Name</th>
                 <th class="py-3.5 px-6">Academic Year & Sem</th>
-                <th class="py-3.5 px-6">Section</th>
+                <th class="py-3.5 px-6">Group</th>
                 <th class="py-3.5 px-6">Confirmed Courses</th>
                 <th class="py-3.5 px-6">Status</th>
                 <th class="py-3.5 px-6 text-right">Actions</th>
@@ -1207,7 +1260,7 @@ function renderStudentsList() {
                   </td>
                 </tr>
               ` : students.map(s => `
-                <tr class="hover:bg-slate-50/80 transition-colors">
+                <tr class="hover:bg-slate-50/80 transition-colors stu-row" data-reg="${s.reg_no.toUpperCase()}" data-name="${s.name.toUpperCase()}" data-group="${s.section}">
                   <td class="py-3.5 px-6">
                     <div class="font-bold text-slate-900">${s.name}</div>
                     <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.reg_no}</div>
@@ -1216,7 +1269,10 @@ function renderStudentsList() {
                     Year ${s.academic_year} &bull; Sem ${s.semester}
                   </td>
                   <td class="py-3.5 px-6 font-bold text-slate-800">
-                    Sec ${s.section}
+                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 ${s.section && s.section.includes('1') ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-purple-100 text-purple-800 border border-purple-200'}">
+                      <span class="w-1.5 h-1.5 rounded-full ${s.section && s.section.includes('1') ? 'bg-blue-600' : 'bg-purple-600'}"></span>
+                      ${s.section.startsWith('Group') ? s.section : `Group ${s.section}`}
+                    </span>
                   </td>
                   <td class="py-3.5 px-6">
                     <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${s.confirmed_selections_count > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
@@ -1247,6 +1303,31 @@ function renderStudentsList() {
       </div>
     </div>
   `;
+}
+
+function filterAdminStudents() {
+  const searchInput = document.getElementById('admin-stu-search');
+  const groupFilter = document.getElementById('admin-stu-group-filter');
+  if (!searchInput || !groupFilter) return;
+
+  const term = searchInput.value.trim().toUpperCase();
+  const selectedGroup = groupFilter.value;
+
+  const rows = document.querySelectorAll('.stu-row');
+  rows.forEach(r => {
+    const reg = r.getAttribute('data-reg') || '';
+    const name = r.getAttribute('data-name') || '';
+    const group = r.getAttribute('data-group') || '';
+
+    const matchesSearch = !term || reg.includes(term) || name.includes(term);
+    const matchesGroup = selectedGroup === 'ALL' || group === selectedGroup;
+
+    if (matchesSearch && matchesGroup) {
+      r.style.display = '';
+    } else {
+      r.style.display = 'none';
+    }
+  });
 }
 
 function openAddStudentModal() {
@@ -1287,8 +1368,11 @@ function openAddStudentModal() {
             </select>
           </div>
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Section</label>
-            <input type="text" id="stu-sec-input" value="A" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase">
+            <label class="block font-semibold text-slate-700 mb-1">Group</label>
+            <select id="stu-sec-input" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <option value="Group 1">Group 1 (501 to 5E2)</option>
+              <option value="Group 2">Group 2 / Group B (5E3 to 5KP)</option>
+            </select>
           </div>
         </div>
         <div>
@@ -1314,7 +1398,7 @@ async function submitAddStudent(e) {
     name: document.getElementById('stu-name-input').value.trim(),
     academic_year: parseInt(document.getElementById('stu-year-input').value, 10),
     semester: parseInt(document.getElementById('stu-sem-input').value, 10),
-    section: document.getElementById('stu-sec-input').value.trim().toUpperCase(),
+    section: document.getElementById('stu-sec-input').value.trim(),
     password: pwd || regNo,
     status: 'ACTIVE'
   };
@@ -1466,8 +1550,11 @@ function openEditStudentModal(id) {
             </select>
           </div>
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Section</label>
-            <input type="text" id="edit-stu-sec" value="${s.section}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase">
+            <label class="block font-semibold text-slate-700 mb-1">Group</label>
+            <select id="edit-stu-sec" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <option value="Group 1" ${s.section === 'Group 1' ? 'selected' : ''}>Group 1 (501 to 5E2)</option>
+              <option value="Group 2" ${s.section === 'Group 2' ? 'selected' : ''}>Group 2 / Group B (5E3 to 5KP)</option>
+            </select>
           </div>
         </div>
         <div>
@@ -1490,7 +1577,7 @@ async function submitEditStudent(e, id) {
     name: document.getElementById('edit-stu-name').value.trim(),
     academic_year: parseInt(document.getElementById('edit-stu-year').value, 10),
     semester: parseInt(document.getElementById('edit-stu-sem').value, 10),
-    section: document.getElementById('edit-stu-sec').value.trim().toUpperCase(),
+    section: document.getElementById('edit-stu-sec').value.trim(),
     password: document.getElementById('edit-stu-pwd').value.trim() || undefined,
     status: 'ACTIVE'
   };

@@ -5,6 +5,14 @@ const { db, withTransaction } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
 
+function normalizeSection(sec) {
+  if (!sec) return 'Group 1';
+  const s = sec.trim();
+  if (/^group\s*1/i.test(s) || s === '1' || s === 'A') return 'Group 1';
+  if (/^group\s*(2|b)/i.test(s) || s === '2' || s === 'B') return 'Group 2';
+  return s;
+}
+
 router.use(authenticateToken);
 
 // GET /api/students - Admin view of student dataset with filters
@@ -45,8 +53,8 @@ router.get('/', requireAdmin, (req, res) => {
     }
 
     if (section && section !== 'ALL') {
-      sql += ` AND s.section = ?`;
-      params.push(section.trim().toUpperCase());
+      sql += ` AND (UPPER(s.section) = UPPER(?) OR s.section LIKE ?)`;
+      params.push(section.trim(), `%${section.trim()}%`);
     }
 
     if (status && status !== 'ALL') {
@@ -166,7 +174,7 @@ router.post('/', requireAdmin, (req, res) => {
         name.trim(),
         parseInt(academic_year, 10),
         parseInt(semester, 10),
-        section.trim().toUpperCase(),
+        normalizeSection(section),
         email ? email.trim() : null,
         phone ? phone.trim() : null,
         studentStatus,
@@ -242,7 +250,7 @@ router.post('/bulk', requireAdmin, (req, res) => {
           item.name.trim(),
           parseInt(item.academic_year, 10),
           parseInt(item.semester, 10),
-          item.section.trim().toUpperCase(),
+          normalizeSection(item.section),
           item.email ? item.email.trim() : null,
           item.phone ? item.phone.trim() : null,
           now
@@ -328,7 +336,7 @@ router.put('/:id', requireAdmin, (req, res) => {
         name.trim(),
         parseInt(academic_year, 10),
         parseInt(semester, 10),
-        section.trim().toUpperCase(),
+        normalizeSection(section),
         email ? email.trim() : null,
         phone ? phone.trim() : null,
         studentStatus,

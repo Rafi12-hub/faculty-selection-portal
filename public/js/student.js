@@ -26,7 +26,8 @@ async function initStudentPortal() {
   document.getElementById('stu-disp-reg').textContent = STATE.student.reg_no;
   document.getElementById('stu-disp-year').textContent = `Year ${STATE.student.academic_year}`;
   document.getElementById('stu-disp-sem').textContent = `Sem ${STATE.student.semester}`;
-  document.getElementById('stu-disp-sec').textContent = `Sec ${STATE.student.section}`;
+  const sec = STATE.student.section || '';
+  document.getElementById('stu-disp-sec').textContent = sec.startsWith('Group') ? sec : `Group ${sec}`;
 
   await loadStudentData();
 

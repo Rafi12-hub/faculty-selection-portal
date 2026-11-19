@@ -439,14 +439,12 @@ const studentsList = [
 
 console.log(`Loaded ${studentsList.length} student records from Admission Numbers 2024 Batch.`);
 
-// Function to calculate Section: A to F (around 68-70 students per section)
+// Function to divide students into 2 groups (3rd Year):
+// Group 1: 501 to 5E2 (sNo 1 to 230, total 230 students)
+// Group 2 (Group B): Remaining from 5E3 to 5KP (sNo 231 to 410, total 180 students)
 function getSection(sNo) {
-  if (sNo <= 68) return 'A';
-  if (sNo <= 136) return 'B';
-  if (sNo <= 204) return 'C';
-  if (sNo <= 272) return 'D';
-  if (sNo <= 340) return 'E';
-  return 'F';
+  if (sNo <= 230) return 'Group 1';
+  return 'Group 2';
 }
 
 const checkUserStmt = db.prepare('SELECT id FROM users WHERE UPPER(username) = ?');
