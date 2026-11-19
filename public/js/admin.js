@@ -1034,6 +1034,7 @@ function renderMappingsList() {
                   <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
                     <tr>
                       <th class="py-3 px-6">Faculty Member</th>
+                      <th class="py-3 px-6">Target Cohort</th>
                       <th class="py-3 px-6">Faculty Code</th>
                       <th class="py-3 px-6">Designation</th>
                       <th class="py-3 px-6">Capacity</th>
@@ -1046,7 +1047,7 @@ function renderMappingsList() {
                   <tbody class="divide-y divide-slate-100">
                     ${mapList.length === 0 ? `
                       <tr>
-                        <td colspan="8" class="py-8 text-center text-slate-400">
+                        <td colspan="9" class="py-8 text-center text-slate-400">
                           <span>No faculty mapped to this course yet. Click "Map More Faculty" to assign teachers.</span>
                         </td>
                       </tr>
@@ -1055,6 +1056,11 @@ function renderMappingsList() {
                         <td class="py-3 px-6">
                           <div class="font-bold text-slate-900">${m.faculty_name}</div>
                           <div class="text-[11px] text-slate-400">${m.faculty_qualification || ''}</div>
+                        </td>
+                        <td class="py-3 px-6">
+                          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${m.target_group === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (m.target_group === 'Group 2' ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-slate-100 text-slate-700')}">
+                            ${m.target_group === 'Group 1' ? 'Group 1 (501–5E2)' : (m.target_group === 'Group 2' ? 'Group 2 (5E3–5KP)' : 'All Groups')}
+                          </span>
                         </td>
                         <td class="py-3 px-6 mono-font text-blue-600 font-semibold">${m.faculty_code}</td>
                         <td class="py-3 px-6 text-slate-600">${m.faculty_designation}</td>
@@ -1121,6 +1127,15 @@ function openAddMappingModal(preselectedSubjectId = null) {
                 ${s.code} - ${s.name} (Year ${s.academic_year}, Sem ${s.semester})
               </option>
             `).join('')}
+          </select>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Target Student Cohort <span class="text-rose-500">*</span></label>
+          <select id="map-target-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800">
+            <option value="Group 1">Group 1 / Group A (501 to 5E2 - 230 Students)</option>
+            <option value="Group 2">Group 2 / Group B (5E3 to 5KP - 180 Students)</option>
+            <option value="ALL">All Groups (Shared)</option>
           </select>
         </div>
 
@@ -1248,6 +1263,7 @@ async function submitAddMapping(e) {
   const subjectId = parseInt(document.getElementById('map-subject').value, 10);
   const year = parseInt(document.getElementById('map-year').value, 10);
   const sem = parseInt(document.getElementById('map-sem').value, 10);
+  const targetGroup = document.getElementById('map-target-group') ? document.getElementById('map-target-group').value : 'ALL';
 
   const body = {
     faculty_ids: facultyIds,
@@ -1255,6 +1271,7 @@ async function submitAddMapping(e) {
     academic_year: year,
     semester: sem,
     capacity: capacity,
+    target_group: targetGroup,
     status: 'ACTIVE'
   };
 
@@ -1842,10 +1859,11 @@ function renderRoundsList() {
             <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
               <tr>
                 <th class="py-3.5 px-6">Round Name</th>
+                <th class="py-3.5 px-6">Target Cohort</th>
                 <th class="py-3.5 px-6">Year & Sem</th>
                 <th class="py-3.5 px-6">Window Start</th>
                 <th class="py-3.5 px-6">Window End</th>
-                <th class="py-3.5 px-6">Confirmed Selections</th>
+                <th class="py-3.5 px-6">Confirmed</th>
                 <th class="py-3.5 px-6">Status</th>
                 <th class="py-3.5 px-6 text-right">Actions</th>
               </tr>
@@ -1853,7 +1871,7 @@ function renderRoundsList() {
             <tbody class="divide-y divide-slate-100">
               ${rounds.length === 0 ? `
                 <tr>
-                  <td colspan="7" class="py-16 text-center text-slate-400">
+                  <td colspan="8" class="py-16 text-center text-slate-400">
                     <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg mb-2">
                       <i class="fa-solid fa-stopwatch"></i>
                     </div>
@@ -1864,6 +1882,11 @@ function renderRoundsList() {
               ` : rounds.map(r => `
                 <tr class="hover:bg-slate-50/80 transition-colors">
                   <td class="py-3.5 px-6 font-bold text-slate-900">${r.name}</td>
+                  <td class="py-3.5 px-6">
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${r.target_group === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (r.target_group === 'Group 2' ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-slate-100 text-slate-700')}">
+                      ${r.target_group === 'Group 1' ? 'Group 1 (501–5E2)' : (r.target_group === 'Group 2' ? 'Group 2 (5E3–5KP)' : 'All Students')}
+                    </span>
+                  </td>
                   <td class="py-3.5 px-6 font-semibold text-slate-700">Year ${r.academic_year} &bull; Sem ${r.semester}</td>
                   <td class="py-3.5 px-6 mono-font text-[11px] text-slate-600">${new Date(r.start_time).toLocaleString()}</td>
                   <td class="py-3.5 px-6 mono-font text-[11px] text-slate-600">${new Date(r.end_time).toLocaleString()}</td>
@@ -1905,7 +1928,15 @@ function openAddRoundModal() {
       <form id="form-add-round" onsubmit="submitAddRound(event)" class="space-y-4 text-xs">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Round Name <span class="text-rose-500">*</span></label>
-          <input type="text" id="round-name" value="Fall 2026 Phase 1" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+          <input type="text" id="round-name" value="III-II Faculty Selection" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Target Student Cohort <span class="text-rose-500">*</span></label>
+          <select id="round-target-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800">
+            <option value="Group 1">Group 1 / Group A (501 to 5E2 - 230 Students)</option>
+            <option value="Group 2">Group 2 / Group B (5E3 to 5KP - 180 Students)</option>
+            <option value="ALL">All Students (Combined)</option>
+          </select>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -1924,8 +1955,8 @@ function openAddRoundModal() {
               <option value="2">Sem 2</option>
               <option value="3">Sem 3</option>
               <option value="4">Sem 4</option>
-              <option value="5" selected>Sem 5</option>
-              <option value="6">Sem 6</option>
+              <option value="5">Sem 5</option>
+              <option value="6" selected>Sem 6</option>
               <option value="7">Sem 7</option>
               <option value="8">Sem 8</option>
             </select>
@@ -1952,6 +1983,7 @@ async function submitAddRound(e) {
   e.preventDefault();
   const body = {
     name: document.getElementById('round-name').value.trim(),
+    target_group: document.getElementById('round-target-group').value,
     academic_year: parseInt(document.getElementById('round-year').value, 10),
     semester: parseInt(document.getElementById('round-sem').value, 10),
     start_time: new Date(document.getElementById('round-start').value).toISOString(),
@@ -2065,6 +2097,11 @@ async function fetchLiveSelections() {
   }
 }
 
+function filterLiveGroup(grp) {
+  ADMIN_DATA.liveGroupFilter = grp;
+  renderLiveSelectionsList();
+}
+
 function renderLiveSelectionsList() {
   try {
     const container = document.getElementById('admin-tab-content');
@@ -2073,125 +2110,216 @@ function renderLiveSelectionsList() {
     const selections = ADMIN_DATA.selections || [];
     const rounds = ADMIN_DATA.rounds || [];
 
-    if (!ADMIN_DATA.selectedLiveRoundId && rounds.length > 0) {
-      const sem6Round = rounds.find(r => r.academic_year === 3 && r.semester === 6);
-      ADMIN_DATA.selectedLiveRoundId = sem6Round ? sem6Round.id : rounds[0].id;
-    }
-    const currentRound = (rounds.length > 0)
-      ? (rounds.find(r => r.id === ADMIN_DATA.selectedLiveRoundId) || rounds[0])
-      : null;
-    const isLiveActive = currentRound ? currentRound.status === 'ACTIVE' : false;
-    const isPaused = currentRound ? currentRound.status === 'PAUSED' : false;
-    const confirmedCount = Array.isArray(selections) ? selections.filter(s => s.status === 'CONFIRMED').length : 0;
+    // Distinct rounds for Group 1 and Group 2
+    const roundG1 = rounds.find(r => r.target_group === 'Group 1') || null;
+    const roundG2 = rounds.find(r => r.target_group === 'Group 2') || null;
+
+    const isG1Active = roundG1 && roundG1.status === 'ACTIVE';
+    const isG1Paused = roundG1 && roundG1.status === 'PAUSED';
+    const g1Selections = selections.filter(s => s.student_section === 'Group 1');
+    const g1Confirmed = g1Selections.filter(s => s.status === 'CONFIRMED').length;
+
+    const isG2Active = roundG2 && roundG2.status === 'ACTIVE';
+    const isG2Paused = roundG2 && roundG2.status === 'PAUSED';
+    const g2Selections = selections.filter(s => s.student_section === 'Group 2');
+    const g2Confirmed = g2Selections.filter(s => s.status === 'CONFIRMED').length;
+
+    const activeFilter = ADMIN_DATA.liveGroupFilter || 'ALL';
+    const displayedSelections = selections.filter(s => {
+      if (activeFilter === 'Group 1') return s.student_section === 'Group 1';
+      if (activeFilter === 'Group 2') return s.student_section === 'Group 2';
+      return true;
+    });
 
     container.innerHTML = `
       <div class="space-y-6">
         
-        <!-- Master Live Selection Control Panel -->
-        <div class="bg-gradient-to-r ${isLiveActive ? 'from-emerald-950 via-slate-900 to-emerald-950 border-emerald-500/40 shadow-emerald-900/20' : (isPaused ? 'from-amber-950 via-slate-900 to-amber-950 border-amber-500/40 shadow-amber-900/20' : 'from-slate-900 via-indigo-950 to-slate-900 border-slate-700')} p-6 rounded-3xl border shadow-xl text-white space-y-5">
-          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <!-- Dual Group Master Live Control Centers -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- Card 1: Group 1 (Group A - 501 to 5E2) -->
+          <div class="bg-gradient-to-br ${isG1Active ? 'from-emerald-950 via-slate-900 to-emerald-950 border-emerald-500/40 shadow-emerald-900/20' : (isG1Paused ? 'from-amber-950 via-slate-900 to-amber-950 border-amber-500/40 shadow-amber-900/20' : 'from-slate-900 via-indigo-950 to-slate-900 border-slate-700')} p-6 rounded-3xl border shadow-xl text-white flex flex-col justify-between space-y-5">
             <div>
-              <div class="flex flex-wrap items-center gap-2.5">
-                <span class="w-3.5 h-3.5 rounded-full ${isLiveActive ? 'bg-emerald-400 animate-ping' : (isPaused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
-                <h3 class="text-base sm:text-lg font-black tracking-tight text-white uppercase">
-                  Live Selection Master Control Center
-                </h3>
-                <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isLiveActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isPaused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
-                  ${currentRound ? currentRound.status : 'NOT CONFIGURED'}
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-3.5 h-3.5 rounded-full ${isG1Active ? 'bg-emerald-400 animate-ping' : (isG1Paused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
+                  <h3 class="text-base font-black tracking-tight text-white uppercase">
+                    Group 1 / Group A
+                  </h3>
+                </div>
+                <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isG1Active ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isG1Paused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
+                  ${roundG1 ? roundG1.status : 'NOT CONFIGURED'}
                 </span>
               </div>
-              <p class="text-xs ${isLiveActive ? 'text-emerald-200' : 'text-slate-300'} mt-1">
-                ${isLiveActive 
-                  ? '🟢 LIVE ACTIVE: All 410 students (Group 1 & Group 2) can now submit faculty choices in real-time.' 
-                  : (isPaused 
-                      ? '⏸️ PAUSED: Student selection is temporarily frozen. Students cannot submit until you resume.' 
-                      : '⏹️ STOPPED / NOT STARTED: Click the green "START LIVE SELECTION" button to open the portal for students.')}
+              <div class="text-xs text-blue-300 font-semibold mt-1">
+                Roll Nos: <strong>501 to 5E2</strong> &bull; Total Cohort: <strong>230 Students</strong>
+              </div>
+              <p class="text-xs ${isG1Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
+                ${isG1Active 
+                  ? '🟢 LIVE ACTIVE: Group 1 students can submit choices right now in real time.' 
+                  : (isG1Paused 
+                      ? '⏸️ PAUSED: Group 1 selection is temporarily frozen by administrator.' 
+                      : '⏹️ NOT STARTED: Click below to unlock the portal for Group 1.')}
               </p>
             </div>
 
-            <!-- Controls: Select Round & Action Buttons -->
-            <div class="flex flex-wrap items-center gap-3">
-              ${rounds.length > 1 ? `
-                <select onchange="changeLiveRound(this.value)" class="py-2.5 px-3 bg-slate-800 border border-slate-700 text-white rounded-xl text-xs font-semibold">
-                  ${rounds.map(r => `
-                    <option value="${r.id}" ${currentRound && r.id === currentRound.id ? 'selected' : ''}>
-                      ${r.name} (${r.status})
-                    </option>
-                  `).join('')}
-                </select>
-              ` : ''}
+            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-white/10 text-xs">
+              <div class="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                <div class="text-slate-400 text-[11px] font-semibold">Confirmed Claims</div>
+                <div class="font-bold text-emerald-400 text-sm mt-0.5">${g1Confirmed} Selections</div>
+              </div>
+              <div class="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                <div class="text-slate-400 text-[11px] font-semibold">Portal Gateway</div>
+                <div class="font-bold ${isG1Active ? 'text-emerald-300' : 'text-amber-300'} text-sm mt-0.5">
+                  ${isG1Active ? 'OPEN' : 'LOCKED'}
+                </div>
+              </div>
+            </div>
 
-              ${currentRound ? (
-                !isLiveActive ? (
-                  isPaused ? `
-                    <button onclick="toggleLiveSelection(${currentRound.id}, 'ACTIVE')" class="py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95 cursor-pointer">
-                      <i class="fa-solid fa-play text-sm"></i>
-                      <span>RESUME LIVE SELECTION</span>
-                    </button>
-                    <button onclick="toggleLiveSelection(${currentRound.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
-                      <i class="fa-solid fa-stop"></i>
-                      <span>End / Close Round</span>
-                    </button>
+            <div class="pt-2">
+              ${roundG1 ? (
+                !isG1Active ? (
+                  isG1Paused ? `
+                    <div class="flex items-center gap-2">
+                      <button onclick="toggleLiveSelection(${roundG1.id}, 'ACTIVE')" class="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all">
+                        <i class="fa-solid fa-play"></i>
+                        <span>RESUME GROUP 1</span>
+                      </button>
+                      <button onclick="toggleLiveSelection(${roundG1.id}, 'CLOSED')" class="py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
+                        <i class="fa-solid fa-stop"></i>
+                        <span>Close</span>
+                      </button>
+                    </div>
                   ` : `
-                    <button onclick="toggleLiveSelection(${currentRound.id}, 'ACTIVE')" class="py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95 cursor-pointer">
+                    <button onclick="toggleLiveSelection(${roundG1.id}, 'ACTIVE')" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-[0.98]">
                       <i class="fa-solid fa-play text-sm"></i>
-                      <span>START LIVE SELECTION</span>
+                      <span>START LIVE SELECTION (GROUP 1)</span>
                     </button>
                   `
                 ) : `
-                  <button onclick="toggleLiveSelection(${currentRound.id}, 'PAUSED')" class="py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
-                    <i class="fa-solid fa-pause"></i>
-                    <span>Pause Selection</span>
-                  </button>
-                  <button onclick="toggleLiveSelection(${currentRound.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
-                    <i class="fa-solid fa-stop"></i>
-                    <span>End / Close Round</span>
-                  </button>
+                  <div class="flex items-center gap-2">
+                    <button onclick="toggleLiveSelection(${roundG1.id}, 'PAUSED')" class="flex-1 py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
+                      <i class="fa-solid fa-pause"></i>
+                      <span>Pause Group 1</span>
+                    </button>
+                    <button onclick="toggleLiveSelection(${roundG1.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
+                      <i class="fa-solid fa-stop"></i>
+                      <span>Close Round</span>
+                    </button>
+                  </div>
                 `
               ) : `
-                <button onclick="switchAdminTab('rounds')" class="py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-all cursor-pointer">
+                <button onclick="switchAdminTab('rounds')" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
                   <i class="fa-solid fa-plus"></i>
-                  <span>Create Selection Round</span>
+                  <span>Configure Group 1 Round</span>
                 </button>
               `}
             </div>
           </div>
 
-          <!-- Live Statistics Bar -->
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-white/10 text-xs">
-            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-              <div class="text-slate-400 text-[11px] font-semibold">Active Selection Round</div>
-              <div class="font-bold text-white mt-0.5 truncate">${currentRound ? currentRound.name : 'None'}</div>
+          <!-- Card 2: Group 2 (Group B - 5E3 to 5KP) -->
+          <div class="bg-gradient-to-br ${isG2Active ? 'from-emerald-950 via-slate-900 to-emerald-950 border-emerald-500/40 shadow-emerald-900/20' : (isG2Paused ? 'from-amber-950 via-slate-900 to-amber-950 border-amber-500/40 shadow-amber-900/20' : 'from-slate-900 via-indigo-950 to-slate-900 border-slate-700')} p-6 rounded-3xl border shadow-xl text-white flex flex-col justify-between space-y-5">
+            <div>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-3.5 h-3.5 rounded-full ${isG2Active ? 'bg-emerald-400 animate-ping' : (isG2Paused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
+                  <h3 class="text-base font-black tracking-tight text-white uppercase">
+                    Group 2 / Group B
+                  </h3>
+                </div>
+                <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isG2Active ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isG2Paused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
+                  ${roundG2 ? roundG2.status : 'NOT CONFIGURED'}
+                </span>
+              </div>
+              <div class="text-xs text-purple-300 font-semibold mt-1">
+                Roll Nos: <strong>5E3 to 5KP</strong> &bull; Total Cohort: <strong>180 Students</strong>
+              </div>
+              <p class="text-xs ${isG2Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
+                ${isG2Active 
+                  ? '🟢 LIVE ACTIVE: Group 2 students can submit choices right now in real time.' 
+                  : (isG2Paused 
+                      ? '⏸️ PAUSED: Group 2 selection is temporarily frozen by administrator.' 
+                      : '⏹️ NOT STARTED: Click below to unlock the portal for Group 2.')}
+              </p>
             </div>
-            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-              <div class="text-slate-400 text-[11px] font-semibold">3rd Year Student Cohort</div>
-              <div class="font-bold text-white mt-0.5">410 (G1: 230 | G2: 180)</div>
-            </div>
-            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-              <div class="text-slate-400 text-[11px] font-semibold">Confirmed Course Claims</div>
-              <div class="font-bold text-emerald-400 mt-0.5">${confirmedCount} Selections</div>
-            </div>
-            <div class="bg-white/5 rounded-xl p-3 border border-white/10">
-              <div class="text-slate-400 text-[11px] font-semibold">Portal Gateway Status</div>
-              <div class="font-bold ${isLiveActive ? 'text-emerald-300' : 'text-amber-300'} mt-0.5">
-                ${isLiveActive ? 'OPEN & ACCEPTING' : 'LOCKED (WAITING)'}
+
+            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-white/10 text-xs">
+              <div class="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                <div class="text-slate-400 text-[11px] font-semibold">Confirmed Claims</div>
+                <div class="font-bold text-emerald-400 text-sm mt-0.5">${g2Confirmed} Selections</div>
+              </div>
+              <div class="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                <div class="text-slate-400 text-[11px] font-semibold">Portal Gateway</div>
+                <div class="font-bold ${isG2Active ? 'text-emerald-300' : 'text-amber-300'} text-sm mt-0.5">
+                  ${isG2Active ? 'OPEN' : 'LOCKED'}
+                </div>
               </div>
             </div>
+
+            <div class="pt-2">
+              ${roundG2 ? (
+                !isG2Active ? (
+                  isG2Paused ? `
+                    <div class="flex items-center gap-2">
+                      <button onclick="toggleLiveSelection(${roundG2.id}, 'ACTIVE')" class="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all">
+                        <i class="fa-solid fa-play"></i>
+                        <span>RESUME GROUP 2</span>
+                      </button>
+                      <button onclick="toggleLiveSelection(${roundG2.id}, 'CLOSED')" class="py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
+                        <i class="fa-solid fa-stop"></i>
+                        <span>Close</span>
+                      </button>
+                    </div>
+                  ` : `
+                    <button onclick="toggleLiveSelection(${roundG2.id}, 'ACTIVE')" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                      <i class="fa-solid fa-play text-sm"></i>
+                      <span>START LIVE SELECTION (GROUP 2)</span>
+                    </button>
+                  `
+                ) : `
+                  <div class="flex items-center gap-2">
+                    <button onclick="toggleLiveSelection(${roundG2.id}, 'PAUSED')" class="flex-1 py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
+                      <i class="fa-solid fa-pause"></i>
+                      <span>Pause Group 2</span>
+                    </button>
+                    <button onclick="toggleLiveSelection(${roundG2.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
+                      <i class="fa-solid fa-stop"></i>
+                      <span>Close Round</span>
+                    </button>
+                  </div>
+                `
+              ) : `
+                <button onclick="switchAdminTab('rounds')" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
+                  <i class="fa-solid fa-plus"></i>
+                  <span>Configure Group 2 Round</span>
+                </button>
+              `}
+            </div>
           </div>
+
         </div>
 
-        <!-- Live Stream Header -->
+        <!-- Live Stream Header with Group Filter Tabs -->
         <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full ${isLiveActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}"></span>
+              <span class="w-2.5 h-2.5 rounded-full ${(isG1Active || isG2Active) ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}"></span>
               <h3 class="text-base font-bold text-slate-900">Live Selections Incoming Stream</h3>
             </div>
             <p class="text-xs text-slate-500 mt-0.5">Real-time server-side FCFS course allocations. Auto-refreshes every 3.5 seconds.</p>
           </div>
-          <div class="flex items-center gap-2 text-xs text-slate-500">
-            <i class="fa-solid fa-clock-rotate-left"></i>
-            <span>Last sync: ${new Date().toLocaleTimeString()}</span>
+
+          <!-- Group Filter Pills -->
+          <div class="flex items-center gap-2">
+            <button onclick="filterLiveGroup('ALL')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeFilter === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+              All Cohorts (${selections.length})
+            </button>
+            <button onclick="filterLiveGroup('Group 1')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeFilter === 'Group 1' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}">
+              Group 1 (${g1Confirmed})
+            </button>
+            <button onclick="filterLiveGroup('Group 2')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeFilter === 'Group 2' ? 'bg-purple-600 text-white shadow-sm' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}">
+              Group 2 (${g2Confirmed})
+            </button>
           </div>
         </div>
 
@@ -2201,6 +2329,7 @@ function renderLiveSelectionsList() {
               <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
                 <tr>
                   <th class="py-3.5 px-6">Student</th>
+                  <th class="py-3.5 px-6">Cohort</th>
                   <th class="py-3.5 px-6">Subject</th>
                   <th class="py-3.5 px-6">Assigned Faculty</th>
                   <th class="py-3.5 px-6">Server Timestamp</th>
@@ -2209,21 +2338,26 @@ function renderLiveSelectionsList() {
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
-                ${selections.length === 0 ? `
+                ${displayedSelections.length === 0 ? `
                   <tr>
-                    <td colspan="6" class="py-16 text-center text-slate-400">
+                    <td colspan="7" class="py-16 text-center text-slate-400">
                       <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg mb-2">
                         <i class="fa-solid fa-satellite-dish"></i>
                       </div>
-                      <div class="font-bold text-slate-700">No Selections Recorded Yet</div>
+                      <div class="font-bold text-slate-700">No Selections Recorded Yet for ${activeFilter === 'ALL' ? 'Any Group' : activeFilter}</div>
                       <div class="text-xs text-slate-400 mt-0.5">As students confirm faculty selections, they will appear here in real time.</div>
                     </td>
                   </tr>
-                ` : selections.map(s => `
+                ` : displayedSelections.map(s => `
                   <tr class="hover:bg-slate-50/80 transition-colors">
                     <td class="py-3.5 px-6">
                       <div class="font-bold text-slate-900">${s.student_name}</div>
-                      <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.student_reg_no} &bull; Sec ${s.student_section}</div>
+                      <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.student_reg_no}</div>
+                    </td>
+                    <td class="py-3.5 px-6">
+                      <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${s.student_section === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (s.student_section === 'Group 2' ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-slate-100 text-slate-700')}">
+                        ${s.student_section === 'Group 1' ? 'Group 1 (501–5E2)' : (s.student_section === 'Group 2' ? 'Group 2 (5E3–5KP)' : s.student_section)}
+                      </span>
                     </td>
                     <td class="py-3.5 px-6">
                       <div class="font-bold text-slate-900">${s.subject_name}</div>

@@ -13,10 +13,10 @@ router.get('/', (req, res) => {
     const params = [];
 
     if (req.user.role === 'STUDENT') {
-      sql += ` AND academic_year = ? AND semester = ?`;
-      params.push(req.student.academic_year, req.student.semester);
+      sql += ` AND academic_year = ? AND semester = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)`;
+      params.push(req.student.academic_year, req.student.semester, req.student.section);
     } else {
-      const { status, academic_year, semester } = req.query;
+      const { status, academic_year, semester, target_group } = req.query;
       if (status && status !== 'ALL') {
         sql += ` AND status = ?`;
         params.push(status);
@@ -28,6 +28,10 @@ router.get('/', (req, res) => {
       if (semester && semester !== 'ALL') {
         sql += ` AND semester = ?`;
         params.push(parseInt(semester, 10));
+      }
+      if (target_group && target_group !== 'ALL') {
+        sql += ` AND target_group = ?`;
+        params.push(target_group);
       }
     }
 
@@ -53,7 +57,7 @@ router.use(requireAdmin);
 // POST /api/rounds - Create selection round
 router.post('/', (req, res) => {
   try {
-    const { name, academic_year, semester, start_time, end_time, status } = req.body;
+    const { name, academic_year, semester, start_time, end_time, status, target_group } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Round Name is required.' });
@@ -69,15 +73,17 @@ router.post('/', (req, res) => {
     }
 
     const roundStatus = status || 'ACTIVE';
+    const targetGrp = target_group || 'ALL';
     const now = new Date().toISOString();
 
     const result = db.prepare(`
-      INSERT INTO selection_rounds (name, academic_year, semester, start_time, end_time, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       name.trim(),
       parseInt(academic_year, 10),
       parseInt(semester, 10),
+      targetGrp,
       new Date(start_time).toISOString(),
       new Date(end_time).toISOString(),
       roundStatus,
@@ -91,7 +97,7 @@ router.post('/', (req, res) => {
       'CREATE_ROUND',
       'ROUND',
       newId,
-      `Created selection round: "${name.trim()}" for Year ${academic_year}, Sem ${semester} [Status: ${roundStatus}]`,
+      `Created selection round: "${name.trim()}" for Year ${academic_year}, Sem ${semester} [Group: ${targetGrp}, Status: ${roundStatus}]`,
       req.ip
     );
 
@@ -115,19 +121,21 @@ router.put('/:id', (req, res) => {
       return res.status(404).json({ success: false, message: 'Selection round not found.' });
     }
 
-    const { name, academic_year, semester, start_time, end_time, status } = req.body;
+    const { name, academic_year, semester, start_time, end_time, status, target_group } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Round Name is required.' });
     }
 
     const roundStatus = status || existing.status;
+    const targetGrp = target_group || existing.target_group || 'ALL';
 
     db.prepare(`
       UPDATE selection_rounds SET
         name = ?,
         academic_year = ?,
         semester = ?,
+        target_group = ?,
         start_time = ?,
         end_time = ?,
         status = ?
@@ -136,6 +144,7 @@ router.put('/:id', (req, res) => {
       name.trim(),
       parseInt(academic_year, 10),
       parseInt(semester, 10),
+      targetGrp,
       new Date(start_time).toISOString(),
       new Date(end_time).toISOString(),
       roundStatus,

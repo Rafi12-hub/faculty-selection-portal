@@ -61,7 +61,7 @@ router.post('/reserve', requireStudent, (req, res) => {
       // 1. Fetch mapping details and lock record
       const mapping = db.prepare(`
         SELECT 
-          m.id, m.faculty_id, m.subject_id, m.academic_year, m.semester, m.capacity, m.status as mapping_status,
+          m.id, m.faculty_id, m.subject_id, m.academic_year, m.semester, m.capacity, m.target_group, m.status as mapping_status,
           f.name as faculty_name, f.faculty_code, f.status as faculty_status,
           s.name as subject_name, s.code as subject_code, s.status as subject_status
         FROM faculty_subject_mappings m
@@ -86,23 +86,32 @@ router.post('/reserve', requireStudent, (req, res) => {
         throw new Error(`Subject ${mapping.subject_code} is currently inactive.`);
       }
 
+      // Group restriction: If mapping is designated for specific group, student must match
+      if (mapping.target_group && mapping.target_group !== 'ALL' && mapping.target_group !== student.section) {
+        const reqGrp = mapping.target_group === 'Group 1' ? 'Group 1 (Group A)' : (mapping.target_group === 'Group 2' ? 'Group 2 (Group B)' : mapping.target_group);
+        const stuGrp = student.section === 'Group 1' ? 'Group 1 (Group A)' : (student.section === 'Group 2' ? 'Group 2 (Group B)' : student.section);
+        throw new Error(`Section Mismatch: This faculty choice is reserved for ${reqGrp}. You belong to ${stuGrp}.`);
+      }
+
       // 2. Strict eligibility check: Academic Year and Semester must match student
       if (mapping.academic_year !== student.academic_year || mapping.semester !== student.semester) {
         throw new Error(`Eligibility mismatch: You belong to Year ${student.academic_year}, Sem ${student.semester}, but this subject is for Year ${mapping.academic_year}, Sem ${mapping.semester}.`);
       }
 
-      // 3. Selection Round Validation (Strict Live Selection Enforcement)
+      // 3. Selection Round Validation (Strict Live Selection Enforcement per student group)
       const currentRound = db.prepare(`
-        SELECT id, name, start_time, end_time, status 
+        SELECT id, name, start_time, end_time, status, target_group
         FROM selection_rounds
-        WHERE academic_year = ? AND semester = ?
+        WHERE academic_year = ? AND semester = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
         ORDER BY created_at DESC
         LIMIT 1
-      `).get(student.academic_year, student.semester);
+      `).get(student.academic_year, student.semester, student.section);
+
+      const groupLabel = student.section === 'Group 1' ? 'Group 1 (Group A)' : (student.section === 'Group 2' ? 'Group 2 (Group B)' : student.section);
 
       if (!currentRound || currentRound.status !== 'ACTIVE') {
         const stateName = currentRound ? currentRound.status : 'NOT STARTED';
-        throw new Error(`Live selection has not been started yet (Status: ${stateName}). Please wait for the administrator to start the live selection.`);
+        throw new Error(`Live selection for ${groupLabel} has not been started yet (Status: ${stateName}). Please wait for the administrator to start ${groupLabel} live selection.`);
       }
 
       const nowMs = Date.now();
@@ -204,7 +213,7 @@ router.use(requireAdmin);
 // GET /api/selections/live - Live selections feed for admin
 router.get('/live', (req, res) => {
   try {
-    const { subject_id, faculty_id, status, search } = req.query;
+    const { subject_id, faculty_id, status, search, target_group } = req.query;
 
     let sql = `
       SELECT 
@@ -239,6 +248,11 @@ router.get('/live', (req, res) => {
     `;
 
     const params = [];
+
+    if (target_group && target_group !== 'ALL') {
+      sql += ` AND stu.section = ?`;
+      params.push(target_group);
+    }
 
     if (subject_id && subject_id !== 'ALL') {
       sql += ` AND sel.subject_id = ?`;

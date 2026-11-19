@@ -72,6 +72,7 @@ function initDatabase() {
       name TEXT NOT NULL,
       academic_year INTEGER NOT NULL CHECK(academic_year BETWEEN 1 AND 4),
       semester INTEGER NOT NULL CHECK(semester BETWEEN 1 AND 8),
+      target_group TEXT DEFAULT 'ALL',
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
       status TEXT DEFAULT 'ACTIVE' CHECK(status IN ('DRAFT', 'ACTIVE', 'PAUSED', 'CLOSED')),
@@ -85,9 +86,10 @@ function initDatabase() {
       academic_year INTEGER NOT NULL CHECK(academic_year BETWEEN 1 AND 4),
       semester INTEGER NOT NULL CHECK(semester BETWEEN 1 AND 8),
       capacity INTEGER NOT NULL CHECK(capacity >= 0),
+      target_group TEXT DEFAULT 'ALL',
       status TEXT DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'INACTIVE')),
       created_at TEXT NOT NULL,
-      UNIQUE(faculty_id, subject_id, academic_year, semester)
+      UNIQUE(faculty_id, subject_id, academic_year, semester, target_group)
     );
 
     CREATE TABLE IF NOT EXISTS selections (

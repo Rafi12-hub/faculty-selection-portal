@@ -46,7 +46,10 @@ async function refreshStudentLiveSeats() {
     ]);
 
     const prevRoundStatus = ACTIVE_ROUND ? ACTIVE_ROUND.status : null;
-    const latestRound = (roundsRes && roundsRes.rounds && roundsRes.rounds.length > 0) ? roundsRes.rounds[0] : null;
+    const userGroup = STATE.student ? STATE.student.section : null;
+    const latestRound = (roundsRes && roundsRes.rounds && roundsRes.rounds.length > 0)
+      ? (roundsRes.rounds.find(r => r.target_group === userGroup) || roundsRes.rounds.find(r => r.target_group === 'ALL') || roundsRes.rounds[0])
+      : null;
 
     if (mapRes && mapRes.mappings) {
       STUDENT_MAPPINGS = mapRes.mappings;
@@ -107,7 +110,10 @@ async function loadStudentData() {
   try {
     // 1. Fetch Rounds
     const roundsRes = await api.get('/api/rounds');
-    ACTIVE_ROUND = (roundsRes && roundsRes.rounds && roundsRes.rounds.length > 0) ? roundsRes.rounds[0] : null;
+    const userGroup = STATE.student ? STATE.student.section : null;
+    ACTIVE_ROUND = (roundsRes && roundsRes.rounds && roundsRes.rounds.length > 0)
+      ? (roundsRes.rounds.find(r => r.target_group === userGroup) || roundsRes.rounds.find(r => r.target_group === 'ALL') || roundsRes.rounds[0])
+      : null;
 
     const roundBadge = document.getElementById('stu-round-badge');
     const roundName = document.getElementById('stu-round-name');
@@ -220,7 +226,7 @@ function renderStudentSubjects() {
 
       <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
         <div>
-          Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; Group ${STATE.student.section}
+          Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; <span class="px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">${STATE.student.section === 'Group 1' ? 'Group 1 (Group A: 501–5E2)' : (STATE.student.section === 'Group 2' ? 'Group 2 (Group B: 5E3–5KP)' : STATE.student.section)}</span>
         </div>
         <div class="font-medium text-slate-700">
           Academic Year ${STATE.student.academic_year} &bull; Semester ${STATE.student.semester}
@@ -234,10 +240,10 @@ function renderStudentSubjects() {
           </div>
           <div>
             <div class="font-bold text-xs uppercase tracking-wider text-amber-900">
-              ${isPaused ? 'Selection Temporarily Paused by Admin' : 'Selection Window Not Started Yet'}
+              ${isPaused ? `Selection Temporarily Paused for ${STATE.student.section}` : `Selection Window Not Started Yet for ${STATE.student.section}`}
             </div>
             <p class="text-[11px] text-amber-800 mt-0.5">
-              ${isPaused ? 'The administrator has temporarily paused selections. Submissions will resume shortly.' : 'Please wait for the administrator to click <strong>"START LIVE SELECTION"</strong> in the admin portal. This questionnaire will automatically unlock in real time!'}
+              ${isPaused ? 'The administrator has temporarily paused selections for your group. Submissions will resume shortly.' : `Please wait for the administrator to click <strong>"START LIVE SELECTION FOR ${STATE.student.section.toUpperCase()}"</strong> in the admin portal. This questionnaire will automatically unlock in real time!`}
             </p>
           </div>
         </div>

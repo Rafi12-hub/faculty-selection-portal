@@ -9,7 +9,7 @@ router.use(authenticateToken);
 // GET /api/mappings - List faculty-subject mappings
 router.get('/', (req, res) => {
   try {
-    const { faculty_id, subject_id, academic_year, semester, status } = req.query;
+    const { faculty_id, subject_id, academic_year, semester, status, target_group } = req.query;
 
     let sql = `
       SELECT 
@@ -19,6 +19,7 @@ router.get('/', (req, res) => {
         m.academic_year,
         m.semester,
         m.capacity,
+        m.target_group,
         m.status,
         m.created_at,
         f.name as faculty_name,
@@ -44,8 +45,8 @@ router.get('/', (req, res) => {
     const params = [];
 
     if (req.user.role === 'STUDENT') {
-      sql += ` AND m.academic_year = ? AND m.semester = ? AND m.status = 'ACTIVE' AND f.status = 'ACTIVE' AND s.status = 'ACTIVE'`;
-      params.push(req.student.academic_year, req.student.semester);
+      sql += ` AND m.academic_year = ? AND m.semester = ? AND (m.target_group = ? OR m.target_group = 'ALL' OR m.target_group IS NULL) AND m.status = 'ACTIVE' AND f.status = 'ACTIVE' AND s.status = 'ACTIVE'`;
+      params.push(req.student.academic_year, req.student.semester, req.student.section);
     } else {
       if (faculty_id && faculty_id !== 'ALL') {
         sql += ` AND m.faculty_id = ?`;
@@ -66,6 +67,10 @@ router.get('/', (req, res) => {
       if (status && status !== 'ALL') {
         sql += ` AND m.status = ?`;
         params.push(status);
+      }
+      if (target_group && target_group !== 'ALL') {
+        sql += ` AND m.target_group = ?`;
+        params.push(target_group);
       }
     }
 
@@ -92,7 +97,7 @@ router.use(requireAdmin);
 // POST /api/mappings - Create faculty-subject mapping (supports 1 faculty or N faculties)
 router.post('/', (req, res) => {
   try {
-    const { faculty_id, faculty_ids, subject_id, academic_year, semester, capacity, status, faculty_capacities } = req.body;
+    const { faculty_id, faculty_ids, subject_id, academic_year, semester, capacity, status, faculty_capacities, target_group } = req.body;
 
     if (!subject_id) {
       return res.status(400).json({ success: false, message: 'Subject selection is required.' });
@@ -103,6 +108,8 @@ router.post('/', (req, res) => {
     if (!semester || semester < 1 || semester > 8) {
       return res.status(400).json({ success: false, message: 'Semester must be between 1 and 8.' });
     }
+
+    const targetGrp = target_group || 'ALL';
 
     const subject = db.prepare('SELECT * FROM subjects WHERE id = ?').get(subject_id);
     if (!subject) {
@@ -131,13 +138,13 @@ router.post('/', (req, res) => {
 
     const checkStmt = db.prepare(`
       SELECT id FROM faculty_subject_mappings 
-      WHERE faculty_id = ? AND subject_id = ? AND academic_year = ? AND semester = ?
+      WHERE faculty_id = ? AND subject_id = ? AND academic_year = ? AND semester = ? AND target_group = ?
     `);
 
     const insertStmt = db.prepare(`
       INSERT INTO faculty_subject_mappings (
-        faculty_id, subject_id, academic_year, semester, capacity, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        faculty_id, subject_id, academic_year, semester, capacity, target_group, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const facultyQuery = db.prepare('SELECT id, name, faculty_code FROM faculty WHERE id = ?');
@@ -152,7 +159,7 @@ router.post('/', (req, res) => {
         const fac = facultyQuery.get(facId);
         if (!fac) continue;
 
-        const existing = checkStmt.get(facId, subject_id, parseInt(academic_year, 10), parseInt(semester, 10));
+        const existing = checkStmt.get(facId, subject_id, parseInt(academic_year, 10), parseInt(semester, 10), targetGrp);
         if (existing) {
           skipped.push(fac.name);
           continue;
@@ -168,11 +175,12 @@ router.post('/', (req, res) => {
           parseInt(academic_year, 10),
           parseInt(semester, 10),
           facCap,
+          targetGrp,
           mapStatus,
           now
         );
 
-        created.push({ id: resRun.lastInsertRowid, faculty_name: fac.name, capacity: facCap });
+        created.push({ id: resRun.lastInsertRowid, faculty_name: fac.name, capacity: facCap, target_group: targetGrp });
 
         logAudit(
           req.user.id,
@@ -230,13 +238,14 @@ router.put('/:id', (req, res) => {
       return res.status(404).json({ success: false, message: 'Mapping record not found.' });
     }
 
-    const { capacity, status } = req.body;
+    const { capacity, status, target_group } = req.body;
 
     if (capacity === undefined || capacity === null || parseInt(capacity, 10) < 0) {
       return res.status(400).json({ success: false, message: 'Seat capacity must be a non-negative number.' });
     }
 
     const newCapacity = parseInt(capacity, 10);
+    const targetGrp = target_group || mapping.target_group || 'ALL';
 
     // CRITICAL REQUIREMENT: Never allow capacity to be reduced below the number of currently allocated seats!
     const allocated = db.prepare(`
@@ -256,9 +265,9 @@ router.put('/:id', (req, res) => {
 
     db.prepare(`
       UPDATE faculty_subject_mappings 
-      SET capacity = ?, status = ?
+      SET capacity = ?, status = ?, target_group = ?
       WHERE id = ?
-    `).run(newCapacity, mapStatus, mappingId);
+    `).run(newCapacity, mapStatus, targetGrp, mappingId);
 
     logAudit(
       req.user.id,
