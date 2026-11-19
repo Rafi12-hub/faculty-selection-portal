@@ -13,7 +13,7 @@ router.get('/', (req, res) => {
     const params = [];
 
     if (req.user.role === 'STUDENT') {
-      sql += ` AND academic_year = ? AND semester = ? AND status = 'ACTIVE'`;
+      sql += ` AND academic_year = ? AND semester = ?`;
       params.push(req.student.academic_year, req.student.semester);
     } else {
       const { status, academic_year, semester } = req.query;
@@ -159,6 +159,60 @@ router.put('/:id', (req, res) => {
   } catch (error) {
     console.error('Error updating round:', error);
     res.status(500).json({ success: false, message: 'Failed to update selection round: ' + error.message });
+  }
+});
+
+// PATCH /api/rounds/:id/status - Quick toggle status from Live Selection module (START / PAUSE / CLOSE)
+router.patch('/:id/status', (req, res) => {
+  try {
+    const roundId = req.params.id;
+    const { status } = req.body;
+    if (!['DRAFT', 'ACTIVE', 'PAUSED', 'CLOSED'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status. Must be DRAFT, ACTIVE, PAUSED, or CLOSED.' });
+    }
+
+    const round = db.prepare('SELECT * FROM selection_rounds WHERE id = ?').get(roundId);
+    if (!round) {
+      return res.status(404).json({ success: false, message: 'Selection round not found.' });
+    }
+
+    const now = new Date().toISOString();
+    let startTime = round.start_time;
+    let endTime = round.end_time;
+
+    // If starting live now, ensure start_time is now and end_time is in future (e.g. 30 days)
+    if (status === 'ACTIVE') {
+      startTime = now;
+      const nowMs = Date.now();
+      const endMs = new Date(endTime).getTime();
+      if (endMs <= nowMs) {
+        endTime = new Date(nowMs + 30 * 24 * 60 * 60 * 1000).toISOString();
+      }
+    }
+
+    db.prepare(`
+      UPDATE selection_rounds 
+      SET status = ?, start_time = ?, end_time = ?
+      WHERE id = ?
+    `).run(status, startTime, endTime, roundId);
+
+    logAudit(
+      req.user.id,
+      'TOGGLE_ROUND_STATUS',
+      'ROUND',
+      roundId,
+      `Live selection round "${round.name}" toggled to ${status} by admin`,
+      req.ip
+    );
+
+    res.json({
+      success: true,
+      message: `Live selection round "${round.name}" is now ${status}.`,
+      round: db.prepare('SELECT * FROM selection_rounds WHERE id = ?').get(roundId)
+    });
+  } catch (err) {
+    console.error('Error toggling round status:', err);
+    res.status(500).json({ success: false, message: 'Failed to update round status: ' + err.message });
   }
 });
 

@@ -91,29 +91,32 @@ router.post('/reserve', requireStudent, (req, res) => {
         throw new Error(`Eligibility mismatch: You belong to Year ${student.academic_year}, Sem ${student.semester}, but this subject is for Year ${mapping.academic_year}, Sem ${mapping.semester}.`);
       }
 
-      // 3. Selection Round Validation
-      const activeRound = db.prepare(`
+      // 3. Selection Round Validation (Strict Live Selection Enforcement)
+      const currentRound = db.prepare(`
         SELECT id, name, start_time, end_time, status 
         FROM selection_rounds
-        WHERE academic_year = ? AND semester = ? AND status = 'ACTIVE'
+        WHERE academic_year = ? AND semester = ?
         ORDER BY created_at DESC
         LIMIT 1
       `).get(student.academic_year, student.semester);
 
-      let roundId = null;
-      if (activeRound) {
-        const nowMs = Date.now();
-        const startMs = new Date(activeRound.start_time).getTime();
-        const endMs = new Date(activeRound.end_time).getTime();
-
-        if (nowMs < startMs) {
-          throw new Error(`Selection round "${activeRound.name}" has not started yet. Opens at ${new Date(activeRound.start_time).toLocaleString()}.`);
-        }
-        if (nowMs > endMs) {
-          throw new Error(`Selection round "${activeRound.name}" has closed at ${new Date(activeRound.end_time).toLocaleString()}.`);
-        }
-        roundId = activeRound.id;
+      if (!currentRound || currentRound.status !== 'ACTIVE') {
+        const stateName = currentRound ? currentRound.status : 'NOT STARTED';
+        throw new Error(`Live selection has not been started yet (Status: ${stateName}). Please wait for the administrator to start the live selection.`);
       }
+
+      const nowMs = Date.now();
+      const startMs = new Date(currentRound.start_time).getTime();
+      const endMs = new Date(currentRound.end_time).getTime();
+
+      if (nowMs < startMs) {
+        throw new Error(`Selection round "${currentRound.name}" has not started yet. Opens at ${new Date(currentRound.start_time).toLocaleString()}.`);
+      }
+      if (nowMs > endMs) {
+        throw new Error(`Selection round "${currentRound.name}" closed at ${new Date(currentRound.end_time).toLocaleString()}.`);
+      }
+
+      const roundId = currentRound.id;
 
       // 4. One selection per subject check: Students can select only ONE faculty member per subject
       const existingSubjectSelection = db.prepare(`

@@ -40,7 +40,14 @@ async function initStudentPortal() {
 async function refreshStudentLiveSeats() {
   if (!STATE.student || STATE.activeStudentTab !== 'subjects') return;
   try {
-    const mapRes = await api.get('/api/mappings');
+    const [mapRes, roundsRes] = await Promise.all([
+      api.get('/api/mappings'),
+      api.get('/api/rounds')
+    ]);
+
+    const prevRoundStatus = ACTIVE_ROUND ? ACTIVE_ROUND.status : null;
+    const latestRound = (roundsRes && roundsRes.rounds && roundsRes.rounds.length > 0) ? roundsRes.rounds[0] : null;
+
     if (mapRes && mapRes.mappings) {
       STUDENT_MAPPINGS = mapRes.mappings;
       STUDENT_MAPPINGS.forEach(m => {
@@ -56,6 +63,19 @@ async function refreshStudentLiveSeats() {
           }
         }
       });
+    }
+
+    if (latestRound) {
+      ACTIVE_ROUND = latestRound;
+      // If round status transitioned (e.g. from NOT STARTED/PAUSED to ACTIVE), re-render to unlock UI!
+      if (prevRoundStatus !== ACTIVE_ROUND.status) {
+        renderStudentSubjects();
+        if (ACTIVE_ROUND.status === 'ACTIVE') {
+          showToast('🟢 Live Selection is now LIVE! You can select your faculty.', 'success');
+        } else if (ACTIVE_ROUND.status === 'PAUSED') {
+          showToast('⏸️ Live Selection has been PAUSED by the administrator.', 'warning');
+        }
+      }
     }
   } catch (e) {
     // Silent background handling
@@ -163,34 +183,73 @@ function renderStudentSubjects() {
     return;
   }
 
+  const isLiveActive = ACTIVE_ROUND && ACTIVE_ROUND.status === 'ACTIVE';
+  const isPaused = ACTIVE_ROUND && ACTIVE_ROUND.status === 'PAUSED';
+
   const formHeaderHtml = `
     <!-- Google Form Questionnaire Header Card -->
-    <div class="bg-white rounded-2xl border-t-8 border-t-indigo-600 border border-slate-200 shadow-sm p-6 sm:p-7 space-y-4">
+    <div class="bg-white rounded-2xl border-t-8 ${isLiveActive ? 'border-t-emerald-600' : 'border-t-amber-500'} border border-slate-200 shadow-sm p-6 sm:p-7 space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 class="text-2xl font-black text-slate-900 tracking-tight">
-            ${ACTIVE_ROUND ? ACTIVE_ROUND.name : 'III-I Faculty Selection'}
+            ${ACTIVE_ROUND ? ACTIVE_ROUND.name : '3rd Year Faculty Selection'}
           </h2>
-          <p class="text-xs font-semibold text-indigo-600 mt-1 uppercase tracking-wider">
+          <p class="text-xs font-semibold ${isLiveActive ? 'text-emerald-700' : 'text-amber-700'} mt-1 uppercase tracking-wider">
             Department of Computer Science and Engineering
           </p>
         </div>
         <div class="flex items-center gap-2">
-          <span class="text-xs px-3 py-1 font-bold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Live Selection Active</span>
-          </span>
+          ${isLiveActive ? `
+            <span class="text-xs px-3 py-1 font-bold rounded-full bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center gap-1.5 shadow-sm">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Live Selection Active</span>
+            </span>
+          ` : (isPaused ? `
+            <span class="text-xs px-3 py-1 font-bold rounded-full bg-amber-50 text-amber-700 border border-amber-300 flex items-center gap-1.5 shadow-sm">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span>Selection Paused</span>
+            </span>
+          ` : `
+            <span class="text-xs px-3 py-1 font-bold rounded-full bg-slate-100 text-slate-600 border border-slate-300 flex items-center gap-1.5 shadow-sm">
+              <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+              <span>Waiting for Admin to Start</span>
+            </span>
+          `)}
         </div>
       </div>
 
       <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
         <div>
-          Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; Section ${STATE.student.section}
+          Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; Group ${STATE.student.section}
         </div>
         <div class="font-medium text-slate-700">
           Academic Year ${STATE.student.academic_year} &bull; Semester ${STATE.student.semester}
         </div>
       </div>
+
+      ${!isLiveActive ? `
+        <div class="p-4 bg-amber-50/90 border-2 border-amber-300 rounded-xl flex items-center gap-3.5 text-amber-900 shadow-sm animate-pulse">
+          <div class="w-10 h-10 rounded-xl bg-amber-200 flex items-center justify-center text-amber-800 text-lg flex-shrink-0">
+            <i class="fa-solid fa-hourglass-half"></i>
+          </div>
+          <div>
+            <div class="font-bold text-xs uppercase tracking-wider text-amber-900">
+              ${isPaused ? 'Selection Temporarily Paused by Admin' : 'Selection Window Not Started Yet'}
+            </div>
+            <p class="text-[11px] text-amber-800 mt-0.5">
+              ${isPaused ? 'The administrator has temporarily paused selections. Submissions will resume shortly.' : 'Please wait for the administrator to click <strong>"START LIVE SELECTION"</strong> in the admin portal. This questionnaire will automatically unlock in real time!'}
+            </p>
+          </div>
+        </div>
+      ` : `
+        <div class="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <strong>Selection Window Open:</strong> Mark your preferred faculty below and click Confirm Selection.
+          </div>
+          <span class="font-bold text-emerald-700">Strict FCFS</span>
+        </div>
+      `}
 
       <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-start gap-2.5">
         <i class="fa-solid fa-circle-info text-indigo-600 text-sm mt-0.5"></i>
@@ -246,10 +305,10 @@ function renderStudentSubjects() {
 
       return `
               <div 
-                onclick="${(!hasSelection && !isFull) ? `setPendingSelection(${subject.id}, ${m.id})` : ''}"
+                onclick="${(isLiveActive && !hasSelection && !isFull) ? `setPendingSelection(${subject.id}, ${m.id})` : ''}"
                 class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected
           ? (hasSelection ? 'border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-400' : 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25')
-          : (isFull ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed' : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50/80 cursor-pointer')
+          : (isFull ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50/80 cursor-pointer' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))
         }">
                 
                 <div class="flex items-center gap-3.5 min-w-0">
@@ -302,6 +361,14 @@ function renderStudentSubjects() {
             <div class="text-xs font-bold text-emerald-800">
               Reserved with ${confirmedSelection.faculty_name}
             </div>
+          ` : (!isLiveActive ? `
+            <div class="text-xs text-amber-700 font-medium">
+              <i class="fa-solid fa-lock mr-1"></i> Waiting for administrator to start live selection.
+            </div>
+            <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed flex items-center justify-center gap-2">
+              <i class="fa-solid fa-lock"></i>
+              <span>${isPaused ? 'Selection Paused' : 'Waiting for Admin to Start'}</span>
+            </button>
           ` : `
             <div class="text-xs text-slate-500">
               ${PENDING_SELECTIONS[subject.id]
@@ -318,7 +385,7 @@ function renderStudentSubjects() {
               <i class="fa-solid fa-check"></i>
               <span>Confirm Selection</span>
             </button>
-          `}
+          `)}
         </div>
       </div>
     `;
