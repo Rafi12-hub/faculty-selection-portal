@@ -141,18 +141,6 @@ function initDatabase() {
     logStmt.run(result.lastInsertRowid, 'SYSTEM_INIT', 'SYSTEM', null, 'Initial administrator account created (username: admin)', '127.0.0.1', now);
     console.log('Default administrator account created with username: admin');
   }
-
-  // Ensure 410 students and faculty data exist
-  try {
-    const studentCount = db.prepare('SELECT count(*) as count FROM students').get().count;
-    if (studentCount === 0) {
-      console.log('Database empty: auto-seeding faculty, subjects, rounds, and 410 students...');
-      require('../../scripts/seed_data');
-      require('../../scripts/seed_all_students');
-    }
-  } catch (err) {
-    console.error('Auto-seed check notice:', err.message);
-  }
 }
 
 // Transaction wrapper for atomic operations

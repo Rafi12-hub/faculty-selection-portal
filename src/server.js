@@ -3,11 +3,23 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure database is initialized
-require('./config/database');
+// Ensure database is initialized and auto-seeded
+const { db } = require('./config/database');
+const { runAutoSeed } = require('./config/seedPortal');
+runAutoSeed(db);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Prevent browser caching of client JS scripts
+app.use((req, res, next) => {
+  if (req.path.endsWith('.js') || req.path.endsWith('.html')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
 
 // Middleware
 app.use(cors());
