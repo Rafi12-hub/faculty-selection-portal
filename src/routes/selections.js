@@ -180,7 +180,7 @@ router.post('/reserve', requireStudent, (req, res) => {
         facultyName: mapping.faculty_name,
         remainingSeats: newRemainingSeats,
         totalCapacity: mapping.capacity,
-        roundName: activeRound ? activeRound.name : null
+        roundName: currentRound ? currentRound.name : null
       };
     });
 
