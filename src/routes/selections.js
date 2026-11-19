@@ -207,6 +207,141 @@ router.post('/reserve', requireStudent, (req, res) => {
   }
 });
 
+// POST /api/selections/reserve-batch - Complete submission of all subjects at once
+router.post('/reserve-batch', requireStudent, (req, res) => {
+  try {
+    const { mapping_ids } = req.body;
+    const student = req.student;
+
+    if (!Array.isArray(mapping_ids) || mapping_ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'Array of mapping_ids is required.' });
+    }
+
+    const batchResults = withTransaction(() => {
+      // 1. Selection Round Validation
+      const currentRound = db.prepare(`
+        SELECT id, name, start_time, end_time, status, target_group
+        FROM selection_rounds
+        WHERE academic_year = ? AND semester = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(student.academic_year, student.semester, student.section);
+
+      const groupLabel = student.section === 'Group 1' ? 'Group 1 (Group A)' : (student.section === 'Group 2' ? 'Group 2 (Group B)' : student.section);
+
+      if (!currentRound) {
+        throw new Error(`No selection round has been configured for your cohort (${groupLabel}). Please contact administration.`);
+      }
+
+      if (currentRound.status === 'DRAFT') {
+        throw new Error(`Live selection for ${groupLabel} has not been started yet. Please wait for the administrator to start ${groupLabel} live selection.`);
+      }
+
+      if (currentRound.status === 'PAUSED') {
+        throw new Error(`Live selection for ${groupLabel} is currently PAUSED by the administrator.`);
+      }
+
+      if (currentRound.status === 'CLOSED') {
+        throw new Error(`Live selection round "${currentRound.name}" is CLOSED.`);
+      }
+
+      const now = new Date();
+      if (now < new Date(currentRound.start_time)) {
+        throw new Error(`Selection round "${currentRound.name}" has not yet started.`);
+      }
+      if (now > new Date(currentRound.end_time)) {
+        throw new Error(`Selection round "${currentRound.name}" has ended.`);
+      }
+
+      const results = [];
+      const serverTimestamp = now.toISOString();
+
+      for (const mId of mapping_ids) {
+        const mapping = db.prepare(`
+          SELECT 
+            m.id, m.faculty_id, m.subject_id, m.academic_year, m.semester, m.capacity, m.target_group, m.status as mapping_status,
+            f.name as faculty_name, f.faculty_code, f.status as faculty_status,
+            s.name as subject_name, s.code as subject_code, s.status as subject_status
+          FROM faculty_subject_mappings m
+          JOIN faculty f ON m.faculty_id = f.id
+          JOIN subjects s ON m.subject_id = s.id
+          WHERE m.id = ?
+        `).get(mId);
+
+        if (!mapping) {
+          throw new Error(`Mapping ID ${mId} does not exist.`);
+        }
+
+        if (mapping.target_group && mapping.target_group !== 'ALL' && mapping.target_group !== student.section) {
+          throw new Error(`Section Mismatch for ${mapping.subject_name}: Reserved for ${mapping.target_group}.`);
+        }
+
+        // Check if student already selected this subject
+        const existing = db.prepare(`
+          SELECT sel.id, f.name as faculty_name
+          FROM selections sel
+          JOIN faculty f ON sel.faculty_id = f.id
+          WHERE sel.student_id = ? AND sel.subject_id = ? AND sel.status = 'CONFIRMED'
+        `).get(student.id, mapping.subject_id);
+
+        if (existing) {
+          // Already confirmed, skip or throw
+          continue;
+        }
+
+        // Check available capacity
+        const currentAllocations = db.prepare(`
+          SELECT COUNT(*) as count 
+          FROM selections 
+          WHERE mapping_id = ? AND status = 'CONFIRMED'
+        `).get(mapping.id).count;
+
+        if (currentAllocations >= mapping.capacity) {
+          throw new Error(`Seats full for ${mapping.faculty_name} in ${mapping.subject_name} (${mapping.subject_code})! All ${mapping.capacity} seats taken.`);
+        }
+
+        // Insert
+        const resInsert = db.prepare(`
+          INSERT INTO selections (
+            student_id, subject_id, faculty_id, mapping_id, selection_round_id, status, reserved_at
+          ) VALUES (?, ?, ?, ?, ?, 'CONFIRMED', ?)
+        `).run(student.id, mapping.subject_id, mapping.faculty_id, mapping.id, currentRound.id, serverTimestamp);
+
+        results.push({
+          selectionId: resInsert.lastInsertRowid,
+          subjectCode: mapping.subject_code,
+          subjectName: mapping.subject_name,
+          facultyName: mapping.faculty_name,
+          serverTimestamp
+        });
+      }
+
+      return results;
+    });
+
+    logAudit(
+      req.user.id,
+      'STUDENT_BATCH_RESERVATIONS_CONFIRMED',
+      'SELECTION',
+      null,
+      `Student ${student.name} (${student.reg_no}) confirmed ${batchResults.length} faculty selections in one submission.`,
+      req.ip
+    );
+
+    res.status(201).json({
+      success: true,
+      message: `All ${batchResults.length} faculty selections have been confirmed successfully!`,
+      selections: batchResults
+    });
+  } catch (error) {
+    console.error('Batch reservation failed:', error.message);
+    res.status(409).json({
+      success: false,
+      message: error.message || 'Batch selection could not be completed.'
+    });
+  }
+});
+
 // Admin-only endpoints below
 router.use(requireAdmin);
 

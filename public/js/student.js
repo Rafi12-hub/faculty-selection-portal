@@ -361,43 +361,197 @@ function renderStudentSubjects() {
         <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           ${hasSelection ? `
             <div class="text-xs text-emerald-700 flex items-center gap-2 font-medium">
-              <i class="fa-solid fa-lock text-emerald-600"></i>
-              <span>Selection confirmed on ${new Date(confirmedSelection.reserved_at).toLocaleString()}</span>
+              <i class="fa-solid fa-circle-check text-emerald-600"></i>
+              <span>Selection permanently locked with <strong>${confirmedSelection.faculty_name}</strong></span>
             </div>
-            <div class="text-xs font-bold text-emerald-800">
-              Reserved with ${confirmedSelection.faculty_name}
+            <div class="text-[11px] font-semibold text-slate-500">
+              Confirmed on ${new Date(confirmedSelection.reserved_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
           ` : (!isLiveActive ? `
             <div class="text-xs text-amber-700 font-medium">
               <i class="fa-solid fa-lock mr-1"></i> Waiting for administrator to start live selection.
             </div>
-            <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed flex items-center justify-center gap-2">
-              <i class="fa-solid fa-lock"></i>
-              <span>${isPaused ? 'Selection Paused' : 'Waiting for Admin to Start'}</span>
-            </button>
           ` : `
-            <div class="text-xs text-slate-500">
+            <div class="text-xs ${PENDING_SELECTIONS[subject.id] ? 'text-indigo-700 font-semibold' : 'text-slate-500'}">
               ${PENDING_SELECTIONS[subject.id]
-        ? '<span class="text-indigo-600 font-semibold"><i class="fa-solid fa-arrow-right mr-1"></i>Oval marked. Click button to reserve.</span>'
-        : 'Click an oval above to choose your faculty.'}
+                ? '<i class="fa-solid fa-check text-indigo-600 mr-1.5"></i>Faculty choice marked. Proceed to complete other subjects below.'
+                : 'Click an oval above to select your preferred faculty for this course.'}
             </div>
-            <button 
-              ${!PENDING_SELECTIONS[subject.id] ? 'disabled' : ''}
-              onclick="submitSubjectSelection(${subject.id})"
-              class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${PENDING_SELECTIONS[subject.id]
-        ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/25 cursor-pointer hover-lift'
-        : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-      }">
-              <i class="fa-solid fa-check"></i>
-              <span>Confirm Selection</span>
-            </button>
           `)}
         </div>
       </div>
     `;
   }).join('');
 
-  container.innerHTML = formHeaderHtml + subjectsHtml;
+  // Calculate batch progress
+  const totalSubjects = STUDENT_SUBJECTS.length;
+  const confirmedCount = STUDENT_SUBJECTS.filter(sub => 
+    STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED')
+  ).length;
+
+  const newlySelectedCount = STUDENT_SUBJECTS.filter(sub => {
+    const hasConf = STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED');
+    return !hasConf && PENDING_SELECTIONS[sub.id];
+  }).length;
+
+  const totalFilled = confirmedCount + newlySelectedCount;
+  const isAllFilled = totalFilled >= totalSubjects && totalSubjects > 0;
+  const remaining = totalSubjects - totalFilled;
+
+  // Single Master Confirmation Card at the bottom of the form
+  const bottomSubmitBar = `
+    <div class="sticky bottom-4 z-20 mt-8 bg-white/95 backdrop-blur-md rounded-2xl border-2 ${isAllFilled ? 'border-emerald-500 shadow-2xl shadow-emerald-500/20' : 'border-slate-300 shadow-xl'} p-5 sm:p-6 transition-all">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2.5">
+            <span class="w-3 h-3 rounded-full ${isAllFilled ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}"></span>
+            <h4 class="text-base font-black text-slate-900">
+              Faculty Selection Summary (${totalFilled} / ${totalSubjects} Chosen)
+            </h4>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            ${isAllFilled 
+              ? '🎉 All subjects have a selected faculty! Click the confirm button to finalize and lock your choices.' 
+              : `Please mark your faculty choice for all courses before submitting (${remaining} course${remaining > 1 ? 's' : ''} remaining).`}
+          </p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          ${isLiveActive ? `
+            <button 
+              ${!isAllFilled ? 'disabled' : ''}
+              onclick="openBatchConfirmationModal()"
+              class="w-full md:w-auto px-7 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2.5 ${isAllFilled 
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 cursor-pointer transform hover:scale-[1.02] active:scale-[0.98]' 
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'}">
+              <i class="fa-solid fa-check-double text-sm"></i>
+              <span>${isAllFilled ? 'Submit & Confirm All Faculties' : `Select All Courses (${remaining} left)`}</span>
+            </button>
+          ` : `
+            <button disabled class="px-6 py-3 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200">
+              <i class="fa-solid fa-lock mr-1.5"></i> Selection Not Active
+            </button>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = formHeaderHtml + subjectsHtml + bottomSubmitBar;
+}
+
+// Master Confirmation Modal reviewing all chosen faculties
+function openBatchConfirmationModal() {
+  const chosenMappings = [];
+  const subjectsToConfirm = [];
+
+  for (const subject of STUDENT_SUBJECTS) {
+    const isAlreadyConfirmed = STUDENT_SELECTIONS.find(s => s.subject_id === subject.id && s.status === 'CONFIRMED');
+    if (!isAlreadyConfirmed) {
+      const mappingId = PENDING_SELECTIONS[subject.id];
+      if (mappingId) {
+        const mapping = STUDENT_MAPPINGS.find(m => m.id === mappingId);
+        if (mapping) {
+          chosenMappings.push(mapping.id);
+          subjectsToConfirm.push({
+            subjectName: subject.name,
+            subjectCode: subject.code,
+            facultyName: mapping.faculty_name,
+            facultyDesignation: mapping.faculty_designation || mapping.designation
+          });
+        }
+      }
+    }
+  }
+
+  if (chosenMappings.length === 0) {
+    showToast('No new faculty selections to confirm.', 'info');
+    return;
+  }
+
+  openModal({
+    title: 'Confirm Complete Faculty Selection',
+    maxWidth: 'max-w-2xl',
+    body: `
+      <div class="space-y-4 py-2">
+        <div class="text-center space-y-1">
+          <div class="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto text-2xl shadow-inner">
+            <i class="fa-solid fa-clipboard-check"></i>
+          </div>
+          <h4 class="text-base font-black text-slate-900 mt-2">Final Review of Your Faculty Choices</h4>
+          <p class="text-xs text-slate-500">Please verify your preferred faculty for each subject before submitting.</p>
+        </div>
+
+        <div class="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 bg-slate-50 text-xs">
+          ${subjectsToConfirm.map((item, idx) => `
+            <div class="p-3.5 flex items-center justify-between gap-3 bg-white">
+              <div class="min-w-0">
+                <span class="mono-font text-[10px] font-bold text-slate-400 uppercase">${item.subjectCode}</span>
+                <div class="font-bold text-slate-900 truncate">${idx + 1}. ${item.subjectName}</div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                <div class="font-bold text-indigo-700">${item.facultyName}</div>
+                <div class="text-[10px] text-slate-400">${item.facultyDesignation || 'Department Faculty'}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+          <i class="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5"></i>
+          <div>
+            <strong>Strict FCFS Allocation:</strong> Once confirmed, your seat with each selected faculty is permanent and cannot be modified.
+          </div>
+        </div>
+      </div>
+    `,
+    footer: `
+      <button onclick="closeModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs transition-colors">
+        Go Back & Edit
+      </button>
+      <button id="btn-batch-confirm" onclick="executeBatchReservation()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2">
+        <i class="fa-solid fa-check-double"></i>
+        <span>Yes, Lock & Confirm Selections</span>
+      </button>
+    `
+  });
+}
+
+// Execute batch reservation for all chosen faculties
+async function executeBatchReservation() {
+  const btn = document.getElementById('btn-batch-confirm');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i><span>Locking All Seats...</span>`;
+  }
+
+  const mappingIds = [];
+  for (const subject of STUDENT_SUBJECTS) {
+    const isAlreadyConfirmed = STUDENT_SELECTIONS.find(s => s.subject_id === subject.id && s.status === 'CONFIRMED');
+    if (!isAlreadyConfirmed && PENDING_SELECTIONS[subject.id]) {
+      mappingIds.push(PENDING_SELECTIONS[subject.id]);
+    }
+  }
+
+  try {
+    const res = await api.post('/api/selections/reserve-batch', { mapping_ids: mappingIds });
+
+    if (res && res.success) {
+      closeModal();
+      showToast(res.message || 'All faculty choices confirmed successfully!', 'success');
+      // Clear pending
+      PENDING_SELECTIONS = {};
+      await loadStudentData();
+      switchStudentTab('selections');
+    }
+  } catch (err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-check-double"></i><span>Try Again</span>`;
+    }
+    showToast(err.message || 'Could not complete selection.', 'error');
+    loadStudentData();
+  }
 }
 
 // Open modal to view and select faculty for a specific subject
