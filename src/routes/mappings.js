@@ -89,14 +89,11 @@ router.get('/', (req, res) => {
 // Admin-only endpoints below
 router.use(requireAdmin);
 
-// POST /api/mappings - Create faculty-subject mapping
+// POST /api/mappings - Create faculty-subject mapping (supports 1 faculty or N faculties)
 router.post('/', (req, res) => {
   try {
-    const { faculty_id, subject_id, academic_year, semester, capacity, status } = req.body;
+    const { faculty_id, faculty_ids, subject_id, academic_year, semester, capacity, status, faculty_capacities } = req.body;
 
-    if (!faculty_id) {
-      return res.status(400).json({ success: false, message: 'Faculty member selection is required.' });
-    }
     if (!subject_id) {
       return res.status(400).json({ success: false, message: 'Subject selection is required.' });
     }
@@ -106,72 +103,114 @@ router.post('/', (req, res) => {
     if (!semester || semester < 1 || semester > 8) {
       return res.status(400).json({ success: false, message: 'Semester must be between 1 and 8.' });
     }
-    if (capacity === undefined || capacity === null || parseInt(capacity, 10) < 0) {
-      return res.status(400).json({ success: false, message: 'Seat capacity must be a non-negative number.' });
-    }
-
-    const faculty = db.prepare('SELECT * FROM faculty WHERE id = ?').get(faculty_id);
-    if (!faculty) {
-      return res.status(404).json({ success: false, message: 'Selected faculty member not found.' });
-    }
 
     const subject = db.prepare('SELECT * FROM subjects WHERE id = ?').get(subject_id);
     if (!subject) {
       return res.status(404).json({ success: false, message: 'Selected subject not found.' });
     }
 
-    // Check for duplicate active mapping for the same faculty, subject, academic year, and semester
-    const existing = db.prepare(`
-      SELECT id FROM faculty_subject_mappings 
-      WHERE faculty_id = ? AND subject_id = ? AND academic_year = ? AND semester = ?
-    `).get(faculty_id, subject_id, parseInt(academic_year, 10), parseInt(semester, 10));
+    // Determine target faculty list: supports single faculty_id or array faculty_ids
+    let targetFacultyList = [];
+    if (Array.isArray(faculty_ids) && faculty_ids.length > 0) {
+      targetFacultyList = faculty_ids;
+    } else if (Array.isArray(faculty_id) && faculty_id.length > 0) {
+      targetFacultyList = faculty_id;
+    } else if (faculty_id) {
+      targetFacultyList = [faculty_id];
+    } else {
+      return res.status(400).json({ success: false, message: 'At least one faculty member must be selected.' });
+    }
 
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: `A mapping already exists for ${faculty.name} teaching ${subject.code} (${subject.name}) in Year ${academic_year}, Semester ${semester}.`
-      });
+    const defaultCapacity = (capacity !== undefined && capacity !== null) ? parseInt(capacity, 10) : 60;
+    if (defaultCapacity < 0) {
+      return res.status(400).json({ success: false, message: 'Seat capacity must be non-negative.' });
     }
 
     const now = new Date().toISOString();
     const mapStatus = status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    const maxCapacity = parseInt(capacity, 10);
 
-    const insert = db.prepare(`
+    const checkStmt = db.prepare(`
+      SELECT id FROM faculty_subject_mappings 
+      WHERE faculty_id = ? AND subject_id = ? AND academic_year = ? AND semester = ?
+    `);
+
+    const insertStmt = db.prepare(`
       INSERT INTO faculty_subject_mappings (
         faculty_id, subject_id, academic_year, semester, capacity, status, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const result = insert.run(
-      faculty_id,
-      subject_id,
-      parseInt(academic_year, 10),
-      parseInt(semester, 10),
-      maxCapacity,
-      mapStatus,
-      now
-    );
+    const facultyQuery = db.prepare('SELECT id, name, faculty_code FROM faculty WHERE id = ?');
 
-    const newId = result.lastInsertRowid;
+    const created = [];
+    const skipped = [];
 
-    logAudit(
-      req.user.id,
-      'CREATE_MAPPING',
-      'MAPPING',
-      newId,
-      `Assigned ${faculty.name} to ${subject.code} (${subject.name}) for Year ${academic_year}, Sem ${semester} with capacity ${maxCapacity}`,
-      req.ip
-    );
+    db.exec('BEGIN TRANSACTION');
+    try {
+      for (const fId of targetFacultyList) {
+        const facId = parseInt(fId, 10);
+        const fac = facultyQuery.get(facId);
+        if (!fac) continue;
+
+        const existing = checkStmt.get(facId, subject_id, parseInt(academic_year, 10), parseInt(semester, 10));
+        if (existing) {
+          skipped.push(fac.name);
+          continue;
+        }
+
+        const facCap = (faculty_capacities && faculty_capacities[facId] !== undefined)
+          ? parseInt(faculty_capacities[facId], 10)
+          : defaultCapacity;
+
+        const resRun = insertStmt.run(
+          facId,
+          subject_id,
+          parseInt(academic_year, 10),
+          parseInt(semester, 10),
+          facCap,
+          mapStatus,
+          now
+        );
+
+        created.push({ id: resRun.lastInsertRowid, faculty_name: fac.name, capacity: facCap });
+
+        logAudit(
+          req.user.id,
+          'CREATE_MAPPING',
+          'MAPPING',
+          resRun.lastInsertRowid,
+          `Assigned ${fac.name} to ${subject.code} (${subject.name}) for Year ${academic_year}, Sem ${semester} with capacity ${facCap}`,
+          req.ip
+        );
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+
+    if (created.length === 0 && skipped.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Selected faculty member(s) already mapped to ${subject.code}: ${skipped.join(', ')}`
+      });
+    }
+
+    let message = `Successfully mapped ${created.length} faculty member(s) to ${subject.code} (${subject.name}).`;
+    if (skipped.length > 0) {
+      message += ` (${skipped.length} already mapped: ${skipped.join(', ')})`;
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Faculty-Subject mapping created successfully.',
-      mapping_id: newId
+      message,
+      created_count: created.length,
+      mappings: created,
+      skipped_count: skipped.length
     });
   } catch (error) {
-    console.error('Error creating mapping:', error);
-    res.status(500).json({ success: false, message: 'Failed to create mapping: ' + error.message });
+    console.error('Error creating mapping(s):', error);
+    res.status(500).json({ success: false, message: 'Failed to create mapping(s): ' + error.message });
   }
 });
 

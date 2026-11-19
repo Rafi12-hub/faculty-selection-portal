@@ -127,6 +127,34 @@ if (ooadSub && facRam) insertMapping.run(facRam.id, ooadSub.id, 45, now);
 
 console.log('Created subjects and faculty-subject mappings for III-I.');
 
+// Map faculty for III-II (Semester 6) subjects (each subject mapped to N faculties):
+const insertSem6Mapping = db.prepare(`
+  INSERT OR IGNORE INTO faculty_subject_mappings (
+    faculty_id, subject_id, academic_year, semester, capacity, status, created_at
+  ) VALUES (?, ?, 3, 6, ?, 'ACTIVE', ?)
+`);
+
+const sem6Subjects = [
+  { code: 'CS601', facCodes: ['FAC001', 'FAC002', 'FAC003'], capacity: 75 },
+  { code: 'CS602', facCodes: ['FAC004', 'FAC005', 'FAC006'], capacity: 75 },
+  { code: 'CS603', facCodes: ['FAC007', 'FAC008', 'FAC026'], capacity: 75 },
+  { code: 'CS604', facCodes: ['FAC010', 'FAC011', 'FAC012'], capacity: 75 },
+  { code: 'CS605', facCodes: ['FAC014', 'FAC015', 'FAC016'], capacity: 75 },
+  { code: 'CS606', facCodes: ['FAC017', 'FAC018', 'FAC019'], capacity: 75 }
+];
+
+for (const item of sem6Subjects) {
+  const sub = db.prepare('SELECT id FROM subjects WHERE code = ?').get(item.code);
+  if (!sub) continue;
+  for (const fCode of item.facCodes) {
+    const f = db.prepare('SELECT id FROM faculty WHERE faculty_code = ?').get(fCode);
+    if (f) {
+      insertSem6Mapping.run(f.id, sub.id, item.capacity, now);
+    }
+  }
+}
+console.log('Created faculty-subject mappings for III-II (each subject mapped to N faculties).');
+
 // Create an Active Selection Round for III-I
 const insertRound = db.prepare(`
   INSERT OR IGNORE INTO selection_rounds (

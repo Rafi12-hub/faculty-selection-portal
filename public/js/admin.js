@@ -901,144 +901,291 @@ async function loadAdminMappings() {
 function renderMappingsList() {
   const container = document.getElementById('admin-tab-content');
   const mappings = ADMIN_DATA.mappings;
+  const subjects = ADMIN_DATA.subjects;
+
+  // Group mappings by subject
+  const subjectMap = {};
+  subjects.forEach(s => {
+    subjectMap[s.id] = {
+      subject: s,
+      mappings: []
+    };
+  });
+
+  mappings.forEach(m => {
+    if (!subjectMap[m.subject_id]) {
+      subjectMap[m.subject_id] = {
+        subject: { id: m.subject_id, code: m.subject_code, name: m.subject_name, academic_year: m.academic_year, semester: m.semester },
+        mappings: []
+      };
+    }
+    subjectMap[m.subject_id].mappings.push(m);
+  });
+
+  const subjectGroups = Object.values(subjectMap);
+  const totalSubjects = subjects.length;
+  const totalMappings = mappings.length;
+  const totalCapacity = mappings.reduce((sum, m) => sum + (m.capacity || 0), 0);
+  const totalAllocated = mappings.reduce((sum, m) => sum + (m.allocated_seats || 0), 0);
 
   container.innerHTML = `
     <div class="space-y-6">
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h3 class="text-base font-bold text-slate-900">Faculty–Subject Mappings & Capacities</h3>
-          <p class="text-xs text-slate-500">Assign faculty members to specific subjects. Each mapping possesses an independent seat capacity.</p>
+          <h3 class="text-base font-bold text-slate-900">Faculty–Subject Mappings (1 Subject → N Faculties)</h3>
+          <p class="text-xs text-slate-500">Each course subject is mapped to N faculty members with independent seat capacities for student selection.</p>
         </div>
-        <button onclick="openAddMappingModal()" class="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 flex items-center gap-1.5 transition-all self-start sm:self-auto">
+        <button onclick="openAddMappingModal()" class="py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 flex items-center gap-1.5 transition-all self-start sm:self-auto">
           <i class="fa-solid fa-diagram-project"></i>
-          <span>Create New Mapping</span>
+          <span>Map Subject to N Faculties</span>
         </button>
       </div>
 
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
-              <tr>
-                <th class="py-3.5 px-6">Faculty Member</th>
-                <th class="py-3.5 px-6">Assigned Subject</th>
-                <th class="py-3.5 px-6">Year & Sem</th>
-                <th class="py-3.5 px-6">Seat Capacity</th>
-                <th class="py-3.5 px-6">Allocated</th>
-                <th class="py-3.5 px-6">Remaining</th>
-                <th class="py-3.5 px-6">Status</th>
-                <th class="py-3.5 px-6 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              ${mappings.length === 0 ? `
-                <tr>
-                  <td colspan="8" class="py-16 text-center text-slate-400">
-                    <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg mb-2">
-                      <i class="fa-solid fa-diagram-project"></i>
-                    </div>
-                    <div class="font-bold text-slate-700">No Mappings Configured</div>
-                    <div class="text-xs text-slate-400 mt-0.5">Click "Create New Mapping" above to assign faculty members to courses with individual seat capacities.</div>
-                  </td>
-                </tr>
-              ` : mappings.map(m => `
-                <tr class="hover:bg-slate-50/80 transition-colors">
-                  <td class="py-3.5 px-6">
-                    <div class="font-bold text-slate-900">${m.faculty_name}</div>
-                    <div class="mono-font text-[11px] text-blue-600 font-semibold">${m.faculty_code} &bull; ${m.faculty_designation}</div>
-                  </td>
-                  <td class="py-3.5 px-6">
-                    <div class="font-bold text-slate-900">${m.subject_name}</div>
-                    <div class="mono-font text-[11px] text-slate-500">${m.subject_code}</div>
-                  </td>
-                  <td class="py-3.5 px-6 font-semibold text-slate-700">
-                    Year ${m.academic_year} &bull; Sem ${m.semester}
-                  </td>
-                  <td class="py-3.5 px-6">
-                    <div class="flex items-center gap-2">
-                      <span class="font-bold text-slate-900 text-sm">${m.capacity}</span>
-                      <button onclick="openEditCapacityModal(${m.id}, ${m.capacity}, ${m.allocated_seats}, '${escapeQuote(m.faculty_name)}', '${escapeQuote(m.subject_name)}')" class="text-blue-600 hover:text-blue-800 text-[11px] underline">
-                        Edit
-                      </button>
-                    </div>
-                  </td>
-                  <td class="py-3.5 px-6 font-bold text-blue-600">${m.allocated_seats}</td>
-                  <td class="py-3.5 px-6">
-                    <span class="font-bold ${m.available_seats === 0 ? 'text-rose-600' : 'text-emerald-600'}">
-                      ${m.available_seats === 0 ? 'FULL' : `${m.available_seats} seats`}
-                    </span>
-                  </td>
-                  <td class="py-3.5 px-6">
-                    <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${m.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
-                      ${m.status}
-                    </span>
-                  </td>
-                  <td class="py-3.5 px-6 text-right space-x-2">
-                    <button onclick="deleteMappingRecord(${m.id}, '${escapeQuote(m.faculty_name)}', '${escapeQuote(m.subject_name)}')" class="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors" title="Delete Mapping">
-                      <i class="fa-solid fa-trash-can"></i>
-                    </button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+      <!-- Overview Stats -->
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
+            <i class="fa-solid fa-book"></i>
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Subjects</div>
+            <div class="text-lg font-black text-slate-900">${totalSubjects} Courses</div>
+          </div>
         </div>
+
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
+            <i class="fa-solid fa-chalkboard-user"></i>
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Faculty Mappings</div>
+            <div class="text-lg font-black text-indigo-900">${totalMappings} Offerings</div>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">
+            <i class="fa-solid fa-chair"></i>
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Seats</div>
+            <div class="text-lg font-black text-emerald-900">${totalCapacity} Seats</div>
+          </div>
+        </div>
+
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-sm">
+            <i class="fa-solid fa-user-check"></i>
+          </div>
+          <div>
+            <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Seats Filled</div>
+            <div class="text-lg font-black text-purple-900">${totalAllocated} Allocated</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subject Mappings Grouped Cards -->
+      <div class="space-y-6">
+        ${subjectGroups.length === 0 ? `
+          <div class="py-16 text-center bg-white rounded-2xl border border-slate-200 text-slate-400">
+            <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg mb-2">
+              <i class="fa-solid fa-diagram-project"></i>
+            </div>
+            <div class="font-bold text-slate-700">No Courses or Mappings Configured</div>
+            <div class="text-xs text-slate-400 mt-0.5">Click "Map Subject to N Faculties" to assign faculty members to courses.</div>
+          </div>
+        ` : subjectGroups.map(group => {
+          const sub = group.subject;
+          const mapList = group.mappings;
+          const subCapacity = mapList.reduce((sum, m) => sum + (m.capacity || 0), 0);
+          const subAllocated = mapList.reduce((sum, m) => sum + (m.allocated_seats || 0), 0);
+
+          return `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <!-- Subject Card Header -->
+              <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <span class="mono-font text-xs font-bold px-2.5 py-1 rounded-lg bg-blue-500/20 text-blue-300 border border-blue-400/20">
+                    ${sub.code}
+                  </span>
+                  <div>
+                    <h4 class="text-base font-bold text-white tracking-tight">${sub.name}</h4>
+                    <p class="text-xs text-blue-200 mt-0.5">
+                      Year ${sub.academic_year} &bull; Semester ${sub.semester} &bull; <strong class="text-white">${mapList.length} Faculties Mapped</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-3 self-end sm:self-auto">
+                  <div class="text-right hidden sm:block">
+                    <div class="text-[11px] text-slate-400">Capacity / Filled</div>
+                    <div class="text-xs font-bold text-white">${subCapacity} Total Seats &bull; <span class="text-emerald-400">${subAllocated} Selected</span></div>
+                  </div>
+                  <button onclick="openAddMappingModal(${sub.id})" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm">
+                    <i class="fa-solid fa-user-plus"></i>
+                    <span>Map More Faculty</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Mapped Faculties Table -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+                    <tr>
+                      <th class="py-3 px-6">Faculty Member</th>
+                      <th class="py-3 px-6">Faculty Code</th>
+                      <th class="py-3 px-6">Designation</th>
+                      <th class="py-3 px-6">Capacity</th>
+                      <th class="py-3 px-6">Allocated</th>
+                      <th class="py-3 px-6">Available</th>
+                      <th class="py-3 px-6">Status</th>
+                      <th class="py-3 px-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    ${mapList.length === 0 ? `
+                      <tr>
+                        <td colspan="8" class="py-8 text-center text-slate-400">
+                          <span>No faculty mapped to this course yet. Click "Map More Faculty" to assign teachers.</span>
+                        </td>
+                      </tr>
+                    ` : mapList.map(m => `
+                      <tr class="hover:bg-slate-50/80 transition-colors">
+                        <td class="py-3 px-6">
+                          <div class="font-bold text-slate-900">${m.faculty_name}</div>
+                          <div class="text-[11px] text-slate-400">${m.faculty_qualification || ''}</div>
+                        </td>
+                        <td class="py-3 px-6 mono-font text-blue-600 font-semibold">${m.faculty_code}</td>
+                        <td class="py-3 px-6 text-slate-600">${m.faculty_designation}</td>
+                        <td class="py-3 px-6">
+                          <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-900">${m.capacity}</span>
+                            <button onclick="openEditCapacityModal(${m.id}, ${m.capacity}, ${m.allocated_seats}, '${escapeQuote(m.faculty_name)}', '${escapeQuote(m.subject_name)}')" class="text-blue-600 hover:text-blue-800 text-[11px] underline">
+                              Edit
+                            </button>
+                          </div>
+                        </td>
+                        <td class="py-3 px-6 font-bold text-blue-600">${m.allocated_seats}</td>
+                        <td class="py-3 px-6">
+                          <span class="font-bold ${m.available_seats === 0 ? 'text-rose-600' : 'text-emerald-600'}">
+                            ${m.available_seats === 0 ? 'FULL' : `${m.available_seats} seats`}
+                          </span>
+                        </td>
+                        <td class="py-3 px-6">
+                          <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${m.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
+                            ${m.status}
+                          </span>
+                        </td>
+                        <td class="py-3 px-6 text-right">
+                          <button onclick="deleteMappingRecord(${m.id}, '${escapeQuote(m.faculty_name)}', '${escapeQuote(m.subject_name)}')" class="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors" title="Delete Mapping">
+                            <i class="fa-solid fa-trash-can"></i>
+                          </button>
+                        </td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }).join('')}
       </div>
     </div>
   `;
 }
 
-function openAddMappingModal() {
+function openAddMappingModal(preselectedSubjectId = null) {
   if (ADMIN_DATA.faculty.length === 0 || ADMIN_DATA.subjects.length === 0) {
     showToast('You must add at least one Faculty member and one Subject before creating a mapping.', 'warning');
     return;
   }
 
+  const activeSubjects = ADMIN_DATA.subjects.filter(s => s.status === 'ACTIVE');
+  const activeFaculty = ADMIN_DATA.faculty.filter(f => f.status === 'ACTIVE');
+
+  const defaultSub = preselectedSubjectId 
+    ? activeSubjects.find(s => s.id === preselectedSubjectId) || activeSubjects[0]
+    : activeSubjects[0];
+
   openModal({
-    title: 'Create Faculty–Subject Mapping',
-    maxWidth: 'max-w-md',
+    title: 'Map Subject to N Faculties',
+    maxWidth: 'max-w-2xl',
     body: `
       <form id="form-add-mapping" onsubmit="submitAddMapping(event)" class="space-y-4 text-xs">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Select Faculty Member <span class="text-rose-500">*</span></label>
-          <select id="map-faculty" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-            <option value="">-- Choose Faculty --</option>
-            ${ADMIN_DATA.faculty.filter(f => f.status === 'ACTIVE').map(f => `
-              <option value="${f.id}">${f.name} (${f.faculty_code} - ${f.designation})</option>
-            `).join('')}
-          </select>
-        </div>
-
-        <div>
           <label class="block font-semibold text-slate-700 mb-1">Select Subject <span class="text-rose-500">*</span></label>
-          <select id="map-subject" onchange="autoFillYearSem()" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-            <option value="">-- Choose Subject --</option>
-            ${ADMIN_DATA.subjects.filter(s => s.status === 'ACTIVE').map(s => `
-              <option value="${s.id}" data-year="${s.academic_year}" data-sem="${s.semester}">${s.code} - ${s.name} (Year ${s.academic_year}, Sem ${s.semester})</option>
+          <select id="map-subject" onchange="autoFillYearSem()" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800">
+            ${activeSubjects.map(s => `
+              <option value="${s.id}" data-year="${s.academic_year}" data-sem="${s.semester}" ${(defaultSub && s.id === defaultSub.id) ? 'selected' : ''}>
+                ${s.code} - ${s.name} (Year ${s.academic_year}, Sem ${s.semester})
+              </option>
             `).join('')}
           </select>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-3 gap-3">
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Academic Year <span class="text-rose-500">*</span></label>
-            <input type="number" id="map-year" min="1" max="4" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <label class="block font-semibold text-slate-700 mb-1">Academic Year</label>
+            <input type="number" id="map-year" value="${defaultSub ? defaultSub.academic_year : 3}" min="1" max="4" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
           </div>
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Semester <span class="text-rose-500">*</span></label>
-            <input type="number" id="map-sem" min="1" max="8" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <label class="block font-semibold text-slate-700 mb-1">Semester</label>
+            <input type="number" id="map-sem" value="${defaultSub ? defaultSub.semester : 6}" min="1" max="8" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Default Seats per Faculty <span class="text-rose-500">*</span></label>
+            <input type="number" id="map-capacity" min="1" max="500" value="70" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-blue-600">
           </div>
         </div>
 
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Maximum Seat Capacity <span class="text-rose-500">*</span></label>
-          <input type="number" id="map-capacity" min="1" max="500" value="25" required placeholder="e.g. 25" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900">
-          <p class="text-[11px] text-slate-400 mt-1">This sets the independent seat limit for this specific faculty-subject offering.</p>
+        <!-- Multi-Faculty Selection (Map to N Faculties) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="font-semibold text-slate-800">
+              Select Faculty Members to Map (N Faculties) <span class="text-rose-500">*</span>
+            </label>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="toggleAllMappingFaculty(true)" class="text-blue-600 hover:underline text-[11px] font-semibold">Select All</button>
+              <span class="text-slate-300">|</span>
+              <button type="button" onclick="toggleAllMappingFaculty(false)" class="text-slate-500 hover:underline text-[11px]">Clear All</button>
+            </div>
+          </div>
+
+          <!-- Quick Faculty Search Box -->
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input type="text" id="map-faculty-search" oninput="filterMappingFacultyChecklist()" placeholder="Quick filter faculty by name or code..." class="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+          </div>
+
+          <!-- Checkbox List of Faculties -->
+          <div class="border border-slate-200 rounded-xl p-2 max-h-56 overflow-y-auto space-y-1 bg-slate-50/50" id="map-faculties-checklist">
+            ${activeFaculty.map(f => `
+              <label class="flex items-center justify-between p-2 rounded-lg hover:bg-white transition-colors cursor-pointer border border-transparent hover:border-slate-200 fac-check-item" data-search="${f.name.toUpperCase()} ${f.faculty_code.toUpperCase()}">
+                <div class="flex items-center gap-2.5">
+                  <input type="checkbox" name="map-faculty-id" value="${f.id}" onchange="updateSelectedFacCount()" class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4">
+                  <div>
+                    <div class="font-bold text-slate-900">${f.name}</div>
+                    <div class="text-[11px] text-slate-500">${f.faculty_code} &bull; ${f.designation}</div>
+                  </div>
+                </div>
+                <span class="text-[10px] mono-font text-slate-400">${f.specialization || ''}</span>
+              </label>
+            `).join('')}
+          </div>
+
+          <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+            <span id="map-selected-count" class="font-bold text-indigo-600">0 faculties selected</span>
+            <span>Independent seat capacity assigned to each selected faculty member.</span>
+          </div>
         </div>
 
         <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
           <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-semibold">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md">Create Mapping</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md flex items-center gap-2">
+            <i class="fa-solid fa-check"></i>
+            <span>Confirm & Map Faculties</span>
+          </button>
         </div>
       </form>
     `
@@ -1047,6 +1194,7 @@ function openAddMappingModal() {
 
 function autoFillYearSem() {
   const select = document.getElementById('map-subject');
+  if (!select) return;
   const opt = select.options[select.selectedIndex];
   if (opt && opt.dataset.year) {
     document.getElementById('map-year').value = opt.dataset.year;
@@ -1054,14 +1202,59 @@ function autoFillYearSem() {
   }
 }
 
+function toggleAllMappingFaculty(selectAll) {
+  const checkboxes = document.querySelectorAll('input[name="map-faculty-id"]');
+  checkboxes.forEach(cb => {
+    // Only check visible items if filter is active
+    const parent = cb.closest('.fac-check-item');
+    if (!parent || parent.style.display !== 'none') {
+      cb.checked = selectAll;
+    }
+  });
+  updateSelectedFacCount();
+}
+
+function filterMappingFacultyChecklist() {
+  const q = document.getElementById('map-faculty-search').value.trim().toUpperCase();
+  const items = document.querySelectorAll('.fac-check-item');
+  items.forEach(it => {
+    const s = it.getAttribute('data-search') || '';
+    if (!q || s.includes(q)) {
+      it.style.display = '';
+    } else {
+      it.style.display = 'none';
+    }
+  });
+}
+
+function updateSelectedFacCount() {
+  const checked = document.querySelectorAll('input[name="map-faculty-id"]:checked');
+  const countEl = document.getElementById('map-selected-count');
+  if (countEl) {
+    countEl.textContent = `${checked.length} facult${checked.length === 1 ? 'y' : 'ies'} selected`;
+  }
+}
+
 async function submitAddMapping(e) {
   e.preventDefault();
+  const checkedBoxes = Array.from(document.querySelectorAll('input[name="map-faculty-id"]:checked'));
+  if (checkedBoxes.length === 0) {
+    showToast('Please select at least one faculty member to map to this subject.', 'warning');
+    return;
+  }
+
+  const facultyIds = checkedBoxes.map(cb => parseInt(cb.value, 10));
+  const capacity = parseInt(document.getElementById('map-capacity').value, 10);
+  const subjectId = parseInt(document.getElementById('map-subject').value, 10);
+  const year = parseInt(document.getElementById('map-year').value, 10);
+  const sem = parseInt(document.getElementById('map-sem').value, 10);
+
   const body = {
-    faculty_id: parseInt(document.getElementById('map-faculty').value, 10),
-    subject_id: parseInt(document.getElementById('map-subject').value, 10),
-    academic_year: parseInt(document.getElementById('map-year').value, 10),
-    semester: parseInt(document.getElementById('map-sem').value, 10),
-    capacity: parseInt(document.getElementById('map-capacity').value, 10),
+    faculty_ids: facultyIds,
+    subject_id: subjectId,
+    academic_year: year,
+    semester: sem,
+    capacity: capacity,
     status: 'ACTIVE'
   };
 
@@ -1069,7 +1262,7 @@ async function submitAddMapping(e) {
     const res = await api.post('/api/mappings', body);
     if (res && res.success) {
       closeModal();
-      showToast('Faculty–Subject mapping created successfully!', 'success');
+      showToast(res.message || 'Faculty–Subject mappings created successfully!', 'success');
       loadAdminMappings();
     }
   } catch (err) {
