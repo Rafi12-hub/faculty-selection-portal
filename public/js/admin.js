@@ -922,7 +922,14 @@ function renderMappingsList() {
     subjectMap[m.subject_id].mappings.push(m);
   });
 
-  const subjectGroups = Object.values(subjectMap);
+  ADMIN_DATA.mappingYearFilter = ADMIN_DATA.mappingYearFilter || 'ALL';
+  const yearFilter = ADMIN_DATA.mappingYearFilter;
+
+  const subjectGroups = Object.values(subjectMap).filter(g => {
+    if (yearFilter === '2') return g.subject && g.subject.academic_year === 2;
+    if (yearFilter === '3') return g.subject && g.subject.academic_year === 3;
+    return true;
+  });
   const totalSubjects = subjects.length;
   const totalMappings = mappings.length;
   const totalCapacity = mappings.reduce((sum, m) => sum + (m.capacity || 0), 0);
@@ -982,6 +989,19 @@ function renderMappingsList() {
             <div class="text-lg font-black text-purple-900">${totalAllocated} Allocated</div>
           </div>
         </div>
+      </div>
+
+      <!-- Year Filter Tabs -->
+      <div class="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl w-fit">
+        <button onclick="ADMIN_DATA.mappingYearFilter = 'ALL'; renderMappingsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${yearFilter === 'ALL' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+          All Courses (${subjects.length})
+        </button>
+        <button onclick="ADMIN_DATA.mappingYearFilter = '2'; renderMappingsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${yearFilter === '2' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+          2nd Year II-II (${subjects.filter(s => s.academic_year === 2).length})
+        </button>
+        <button onclick="ADMIN_DATA.mappingYearFilter = '3'; renderMappingsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${yearFilter === '3' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+          3rd Year III-II (${subjects.filter(s => s.academic_year === 3).length})
+        </button>
       </div>
 
       <!-- Subject Mappings Grouped Cards -->
@@ -2110,19 +2130,28 @@ function renderLiveSelectionsList() {
     const selections = ADMIN_DATA.selections || [];
     const rounds = ADMIN_DATA.rounds || [];
 
-    // Distinct rounds for Group 1 and Group 2
-    const roundG1 = rounds.find(r => r.target_group === 'Group 1') || null;
-    const roundG2 = rounds.find(r => r.target_group === 'Group 2') || null;
+    ADMIN_DATA.liveYearFilter = ADMIN_DATA.liveYearFilter || 3;
+    const curYear = parseInt(ADMIN_DATA.liveYearFilter, 10);
+
+    // Distinct rounds for Group 1 and Group 2 for the active year
+    const yearRounds = rounds.filter(r => r.academic_year === curYear);
+    const roundG1 = yearRounds.find(r => r.target_group === 'Group 1') || null;
+    const roundG2 = yearRounds.find(r => r.target_group === 'Group 2') || null;
 
     const isG1Active = roundG1 && roundG1.status === 'ACTIVE';
     const isG1Paused = roundG1 && roundG1.status === 'PAUSED';
-    const g1Selections = selections.filter(s => s.student_section === 'Group 1');
+    const g1Selections = selections.filter(s => s.student_section === 'Group 1' && (!roundG1 || s.selection_round_id === roundG1.id || true));
     const g1Confirmed = g1Selections.filter(s => s.status === 'CONFIRMED').length;
 
     const isG2Active = roundG2 && roundG2.status === 'ACTIVE';
     const isG2Paused = roundG2 && roundG2.status === 'PAUSED';
-    const g2Selections = selections.filter(s => s.student_section === 'Group 2');
+    const g2Selections = selections.filter(s => s.student_section === 'Group 2' && (!roundG2 || s.selection_round_id === roundG2.id || true));
     const g2Confirmed = g2Selections.filter(s => s.status === 'CONFIRMED').length;
+
+    const g1RollText = curYear === 2 ? '501 to 5CT' : '501 to 5E2';
+    const g1CohortText = curYear === 2 ? '189 Students' : '230 Students';
+    const g2RollText = curYear === 2 ? '5CU to 5JN' : '5E3 to 5KP';
+    const g2CohortText = curYear === 2 ? '188 Students' : '182 Students';
 
     const activeFilter = ADMIN_DATA.liveGroupFilter || 'ALL';
     const displayedSelections = selections.filter(s => {
@@ -2134,17 +2163,36 @@ function renderLiveSelectionsList() {
     container.innerHTML = `
       <div class="space-y-6">
         
+        <!-- Year Switcher for Live Control -->
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+              <i class="fa-solid fa-graduation-cap text-blue-600"></i>
+              <span>Live Selection Target Academic Year:</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-0.5">Toggle live round gateway between 2nd Year (II-II) and 3rd Year (III-II).</div>
+          </div>
+          <div class="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
+            <button onclick="ADMIN_DATA.liveYearFilter = 3; renderLiveSelectionsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${curYear === 3 ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+              3rd Year (III-II)
+            </button>
+            <button onclick="ADMIN_DATA.liveYearFilter = 2; renderLiveSelectionsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${curYear === 2 ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+              2nd Year (II-II)
+            </button>
+          </div>
+        </div>
+
         <!-- Dual Group Master Live Control Centers -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          <!-- Card 1: Group 1 (Group A - 501 to 5E2) -->
+          <!-- Card 1: Group 1 -->
           <div class="bg-gradient-to-br ${isG1Active ? 'from-emerald-950 via-slate-900 to-emerald-950 border-emerald-500/40 shadow-emerald-900/20' : (isG1Paused ? 'from-amber-950 via-slate-900 to-amber-950 border-amber-500/40 shadow-amber-900/20' : 'from-slate-900 via-indigo-950 to-slate-900 border-slate-700')} p-6 rounded-3xl border shadow-xl text-white flex flex-col justify-between space-y-5">
             <div>
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
                   <span class="w-3.5 h-3.5 rounded-full ${isG1Active ? 'bg-emerald-400 animate-ping' : (isG1Paused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
                   <h3 class="text-base font-black tracking-tight text-white uppercase">
-                    Group 1 / Group A
+                    Year ${curYear} &bull; Group 1
                   </h3>
                 </div>
                 <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isG1Active ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isG1Paused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
@@ -2152,7 +2200,7 @@ function renderLiveSelectionsList() {
                 </span>
               </div>
               <div class="text-xs text-blue-300 font-semibold mt-1">
-                Roll Nos: <strong>501 to 5E2</strong> &bull; Total Cohort: <strong>230 Students</strong>
+                Roll Nos: <strong>${g1RollText}</strong> &bull; Total Cohort: <strong>${g1CohortText}</strong>
               </div>
               <p class="text-xs ${isG1Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
                 ${isG1Active 
@@ -2217,14 +2265,14 @@ function renderLiveSelectionsList() {
             </div>
           </div>
 
-          <!-- Card 2: Group 2 (Group B - 5E3 to 5KP) -->
+          <!-- Card 2: Group 2 -->
           <div class="bg-gradient-to-br ${isG2Active ? 'from-emerald-950 via-slate-900 to-emerald-950 border-emerald-500/40 shadow-emerald-900/20' : (isG2Paused ? 'from-amber-950 via-slate-900 to-amber-950 border-amber-500/40 shadow-amber-900/20' : 'from-slate-900 via-indigo-950 to-slate-900 border-slate-700')} p-6 rounded-3xl border shadow-xl text-white flex flex-col justify-between space-y-5">
             <div>
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
                   <span class="w-3.5 h-3.5 rounded-full ${isG2Active ? 'bg-emerald-400 animate-ping' : (isG2Paused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
                   <h3 class="text-base font-black tracking-tight text-white uppercase">
-                    Group 2 / Group B
+                    Year ${curYear} &bull; Group 2
                   </h3>
                 </div>
                 <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isG2Active ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isG2Paused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
@@ -2232,7 +2280,7 @@ function renderLiveSelectionsList() {
                 </span>
               </div>
               <div class="text-xs text-purple-300 font-semibold mt-1">
-                Roll Nos: <strong>5E3 to 5KP</strong> &bull; Total Cohort: <strong>180 Students</strong>
+                Roll Nos: <strong>${g2RollText}</strong> &bull; Total Cohort: <strong>${g2CohortText}</strong>
               </div>
               <p class="text-xs ${isG2Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
                 ${isG2Active 
@@ -2309,7 +2357,7 @@ function renderLiveSelectionsList() {
             <p class="text-xs text-slate-500 mt-0.5">Real-time server-side FCFS course allocations. Auto-refreshes every 3.5 seconds.</p>
           </div>
 
-          <!-- Group Filter Pills -->
+          <!-- Group Filter Pills & Excel Export -->
           <div class="flex items-center gap-2">
             <button onclick="filterLiveGroup('ALL')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeFilter === 'ALL' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
               All Cohorts (${selections.length})
@@ -2319,6 +2367,10 @@ function renderLiveSelectionsList() {
             </button>
             <button onclick="filterLiveGroup('Group 2')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeFilter === 'Group 2' ? 'bg-purple-600 text-white shadow-sm' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}">
               Group 2 (${g2Confirmed})
+            </button>
+            <button onclick="downloadReportExcel('selections')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer">
+              <i class="fa-solid fa-file-excel"></i>
+              <span>Export Excel</span>
             </button>
           </div>
         </div>
@@ -2678,4 +2730,22 @@ function renderAuditLogsList() {
       </div>
     </div>
   `;
+}
+
+// Download Excel report handler
+function downloadReportExcel(type) {
+  const yearSelect = document.getElementById('report-excel-year') ? document.getElementById('report-excel-year').value : (ADMIN_DATA.liveYearFilter || 'ALL');
+  let url = '';
+  if (type === 'selections') {
+    url = `/api/reports/export-selections-excel?academic_year=${encodeURIComponent(yearSelect)}&token=${encodeURIComponent(STATE.token || '')}`;
+  } else if (type === 'faculty') {
+    url = `/api/reports/export-faculty-summary-excel?academic_year=${encodeURIComponent(yearSelect)}&token=${encodeURIComponent(STATE.token || '')}`;
+  } else if (type === 'students') {
+    url = `/api/reports/export-students-excel?academic_year=${encodeURIComponent(yearSelect)}&token=${encodeURIComponent(STATE.token || '')}`;
+  }
+
+  if (url) {
+    window.open(url, '_blank');
+    showToast('Excel report download initiated.', 'success');
+  }
 }

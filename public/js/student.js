@@ -213,7 +213,7 @@ function renderStudentSubjects() {
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 class="text-2xl font-black text-slate-900 tracking-tight">
-            ${ACTIVE_ROUND ? ACTIVE_ROUND.name : '3rd Year Faculty Selection'}
+            ${ACTIVE_ROUND ? ACTIVE_ROUND.name : `Year ${STATE.student ? STATE.student.academic_year : ''} Faculty Selection`}
           </h2>
           <p class="text-xs font-semibold ${isLiveActive ? 'text-emerald-700' : 'text-amber-700'} mt-1 uppercase tracking-wider">
             Department of Computer Science and Engineering

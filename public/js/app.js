@@ -127,8 +127,11 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
       if (endpoint.includes('/api/auth/login')) {
         throw new Error(data.message || 'Invalid credentials.');
       }
+      const wasActiveSession = !!STATE.user;
       handleLogout(false);
-      showToast('Session expired. Please log in again.', 'warning');
+      if (wasActiveSession) {
+        showToast('Session expired. Please log in again.', 'warning');
+      }
       return null;
     }
 
@@ -228,10 +231,10 @@ function switchLoginRole(role) {
   if (role === 'STUDENT') {
     tabStudent.className = 'py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 bg-white text-blue-600 shadow-sm';
     tabAdmin.className = 'py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 text-slate-600 hover:text-slate-900';
-    labelUsername.textContent = 'Registration Number';
-    inputUsername.placeholder = 'e.g. 2024CS101';
+    labelUsername.textContent = 'Registration Number or College Email';
+    inputUsername.placeholder = 'e.g. 24091A0501 or 24091a0501@rgmcet.edu.in';
     iconUsername.className = 'fa-solid fa-id-card';
-    helpText.textContent = 'Students log in with their university registration number and assigned password.';
+    helpText.innerHTML = 'Students log in with their Reg No or College Email (<span class="mono-font text-blue-600">regno@rgmcet.edu.in</span>). Password is your Reg No.';
   } else {
     tabAdmin.className = 'py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 bg-white text-blue-600 shadow-sm';
     tabStudent.className = 'py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 text-slate-600 hover:text-slate-900';

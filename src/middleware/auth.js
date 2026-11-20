@@ -5,7 +5,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fssp_super_secure_jwt_secret_key_2
 
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+  if (!token && req.query && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Authentication required. No token provided.' });

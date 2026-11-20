@@ -126,6 +126,14 @@ function runAutoSeed(db) {
       seedYear2Students(db);
     }
 
+    // 4c. Check 2nd Year II-II Subjects & Rounds
+    const y2SubCount = db.prepare("SELECT count(*) as count FROM subjects WHERE academic_year = 2 AND semester = 4").get().count;
+    if (y2SubCount < 10) {
+      console.log(`[AutoSeed] Seeding 2nd Year II-II subjects, rounds and mappings (current: ${y2SubCount})...`);
+      const { seedYear2Subjects } = require('../../scripts/seed_year2_subjects');
+      seedYear2Subjects(db);
+    }
+
     // 5. Ensure Group 1 and Group 2 Selection Rounds exist
     const roundG1 = db.prepare("SELECT id FROM selection_rounds WHERE target_group = 'Group 1'").get();
     if (!roundG1) {
