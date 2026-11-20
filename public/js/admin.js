@@ -2809,7 +2809,7 @@ async function submitClearSelections() {
 
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = \`<i class="fa-solid fa-circle-notch fa-spin"></i><span>Clearing...</span>\`;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Clearing...</span>';
   }
 
   try {
@@ -2826,7 +2826,7 @@ async function submitClearSelections() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = \`<i class="fa-solid fa-trash-can"></i><span>Confirm Clear Selections</span>\`;
+      btn.innerHTML = '<i class="fa-solid fa-trash-can"></i><span>Confirm Clear Selections</span>';
     }
   }
 }
