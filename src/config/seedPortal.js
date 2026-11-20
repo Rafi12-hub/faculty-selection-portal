@@ -110,12 +110,20 @@ function runAutoSeed(db) {
       }
     }
 
-    // 4. Check 410 Students
-    const studentCount = db.prepare("SELECT count(*) as count FROM students").get().count;
+    // 4. Check 410 3rd Year Students (2024 Batch)
+    const studentCount = db.prepare("SELECT count(*) as count FROM students WHERE academic_year = 3").get().count;
     if (studentCount < 400) {
-      console.log(`[AutoSeed] Seeding 410 students from official PDF (current: ${studentCount})...`);
+      console.log(`[AutoSeed] Seeding 410 Year 3 students from official PDF (current: ${studentCount})...`);
       // Run seed_all_students script logic
       require('../../scripts/seed_all_students');
+    }
+
+    // 4b. Check 377 2nd Year Students (2025 Batch)
+    const y2StudentCount = db.prepare("SELECT count(*) as count FROM students WHERE academic_year = 2").get().count;
+    if (y2StudentCount < 370) {
+      console.log(`[AutoSeed] Seeding 377 Year 2 students from official 2025 batch list (current: ${y2StudentCount})...`);
+      const { seedYear2Students } = require('../../scripts/seed_year2_students');
+      seedYear2Students(db);
     }
 
     // 5. Ensure Group 1 and Group 2 Selection Rounds exist
