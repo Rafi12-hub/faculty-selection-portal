@@ -503,4 +503,44 @@ router.post('/:id/cancel', (req, res) => {
   }
 });
 
+// POST /api/selections/clear-all - Admin clears selection records (for reset/trial runs)
+router.post('/clear-all', (req, res) => {
+  try {
+    const { academic_year, target_group } = req.body;
+
+    let sql = `DELETE FROM selections WHERE 1=1`;
+    const params = [];
+
+    if (academic_year && academic_year !== 'ALL') {
+      sql += ` AND student_id IN (SELECT id FROM students WHERE academic_year = ?)`;
+      params.push(parseInt(academic_year, 10));
+    }
+
+    if (target_group && target_group !== 'ALL') {
+      sql += ` AND student_id IN (SELECT id FROM students WHERE section = ?)`;
+      params.push(target_group);
+    }
+
+    const info = db.prepare(sql).run(...params);
+
+    logAudit(
+      req.user.id,
+      'ADMIN_CLEAR_ALL_SELECTIONS',
+      'SELECTION',
+      null,
+      `Administrator cleared ${info.changes} selection records (Filter: Year ${academic_year || 'ALL'}, Group ${target_group || 'ALL'})`,
+      req.ip
+    );
+
+    res.json({
+      success: true,
+      deleted_count: info.changes,
+      message: `Successfully cleared ${info.changes} selection record(s). All seat capacities restored.`
+    });
+  } catch (error) {
+    console.error('Error clearing selections:', error);
+    res.status(500).json({ success: false, message: 'Failed to clear selections: ' + error.message });
+  }
+});
+
 module.exports = router;

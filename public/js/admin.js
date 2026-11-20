@@ -2372,6 +2372,10 @@ function renderLiveSelectionsList() {
               <i class="fa-solid fa-file-excel"></i>
               <span>Export Excel</span>
             </button>
+            <button onclick="openClearSelectionsModal()" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer" title="Reset and clear selections for a new trial run">
+              <i class="fa-solid fa-rotate-left"></i>
+              <span>Clear Selections</span>
+            </button>
           </div>
         </div>
 
@@ -2747,5 +2751,82 @@ function downloadReportExcel(type) {
   if (url) {
     window.open(url, '_blank');
     showToast('Excel report download initiated.', 'success');
+  }
+}
+
+// Clear / Reset selections handler
+function openClearSelectionsModal() {
+  const currentYear = ADMIN_DATA.liveYearFilter || 2;
+  const currentGroup = ADMIN_DATA.liveGroupFilter || 'ALL';
+
+  openModal({
+    title: 'Clear / Reset Selection List',
+    maxWidth: 'max-w-md',
+    body: `
+      <div class="space-y-4">
+        <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+          <i class="fa-solid fa-triangle-exclamation text-rose-600 text-lg mt-0.5"></i>
+          <div class="text-xs text-rose-950 leading-relaxed">
+            <strong class="font-bold">Attention Administrator:</strong> Clearing the selection list permanently removes recorded student choices and restores all faculty available seats to their original capacities. Use this to reset the portal for a fresh trial run.
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Select Scope to Clear:</label>
+          <select id="clear-scope-year" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500">
+            <option value="2" ${currentYear === 2 ? 'selected' : ''}>2nd Year (II-II) Selections Only</option>
+            <option value="3" ${currentYear === 3 ? 'selected' : ''}>3rd Year (III-II) Selections Only</option>
+            <option value="ALL">All Selections (Both Years)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Target Cohort Group:</label>
+          <select id="clear-scope-group" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500">
+            <option value="ALL" ${currentGroup === 'ALL' ? 'selected' : ''}>All Groups (Group 1 + Group 2)</option>
+            <option value="Group 1" ${currentGroup === 'Group 1' ? 'selected' : ''}>Group 1 Only</option>
+            <option value="Group 2" ${currentGroup === 'Group 2' ? 'selected' : ''}>Group 2 Only</option>
+          </select>
+        </div>
+      </div>
+    `,
+    footer: `
+      <button onclick="closeModal()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors">
+        Cancel
+      </button>
+      <button onclick="submitClearSelections()" id="btn-confirm-clear" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/30 flex items-center gap-1.5 transition-all cursor-pointer">
+        <i class="fa-solid fa-trash-can"></i>
+        <span>Confirm Clear Selections</span>
+      </button>
+    `
+  });
+}
+
+async function submitClearSelections() {
+  const year = document.getElementById('clear-scope-year') ? document.getElementById('clear-scope-year').value : 'ALL';
+  const group = document.getElementById('clear-scope-group') ? document.getElementById('clear-scope-group').value : 'ALL';
+  const btn = document.getElementById('btn-confirm-clear');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = \`<i class="fa-solid fa-circle-notch fa-spin"></i><span>Clearing...</span>\`;
+  }
+
+  try {
+    const res = await api.post('/api/selections/clear-all', {
+      academic_year: year,
+      target_group: group
+    });
+
+    closeModal();
+    showToast(res.message || 'Selection list cleared successfully!', 'success');
+    await loadAdminLiveSelections();
+  } catch (err) {
+    showToast(err.message || 'Failed to clear selections.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = \`<i class="fa-solid fa-trash-can"></i><span>Confirm Clear Selections</span>\`;
+    }
   }
 }
