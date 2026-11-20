@@ -126,10 +126,12 @@ function runAutoSeed(db) {
       seedYear2Students(db);
     }
 
-    // 4c. Check 2nd Year II-II Subjects & Rounds
+    // 4c. Check 2nd Year II-II Subjects, Active Rounds & Mappings
     const y2SubCount = db.prepare("SELECT count(*) as count FROM subjects WHERE academic_year = 2 AND semester = 4").get().count;
-    if (y2SubCount < 10) {
-      console.log(`[AutoSeed] Seeding 2nd Year II-II subjects, rounds and mappings (current: ${y2SubCount})...`);
+    const y2MapCount = db.prepare("SELECT count(*) as count FROM faculty_subject_mappings WHERE academic_year = 2").get().count;
+    const y2RoundActive = db.prepare("SELECT count(*) as count FROM selection_rounds WHERE academic_year = 2 AND status = 'ACTIVE'").get().count;
+    if (y2SubCount < 10 || y2MapCount < 50 || y2RoundActive < 2) {
+      console.log(`[AutoSeed] Ensuring 2nd Year II-II subjects, active rounds and mappings (subs: ${y2SubCount}, maps: ${y2MapCount}, active: ${y2RoundActive})...`);
       const { seedYear2Subjects } = require('../../scripts/seed_year2_subjects');
       seedYear2Subjects(db);
     }

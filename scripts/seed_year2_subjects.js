@@ -1,5 +1,5 @@
 /**
- * Seed 2nd Year (II-II) Subjects and Initial Faculty Mappings
+ * Seed 2nd Year (II-II) Subjects, Full Faculty Mappings, and Live Active Selection Rounds
  */
 
 const { db } = require('../src/config/database');
@@ -8,7 +8,7 @@ function seedYear2Subjects(databaseInstance) {
   const d = databaseInstance || db;
   const now = new Date().toISOString();
 
-  console.log('[SeedYear2Subjects] Adding II-II subjects and rounds...');
+  console.log('[SeedYear2Subjects] Adding II-II subjects and active rounds...');
 
   const year2Subjects = [
     { code: 'A0010234', name: 'Managerial Economics and Financial Analysis', credits: 2 },
@@ -33,48 +33,59 @@ function seedYear2Subjects(databaseInstance) {
     insertSub.run(s.code, s.name, s.credits, now);
   }
 
-  // Ensure Year 2 Selection Rounds exist for Group 1 and Group 2
+  // Ensure Year 2 Selection Rounds exist for Group 1 and Group 2 and are marked ACTIVE
   const roundY2G1 = d.prepare("SELECT id FROM selection_rounds WHERE academic_year = 2 AND semester = 4 AND target_group = 'Group 1'").get();
   if (!roundY2G1) {
     d.prepare(`
       INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-      VALUES ('II-II Faculty Selection - Group 1 (501 to 5CT)', 2, 4, 'Group 1', ?, ?, 'DRAFT', ?)
+      VALUES ('II-II Faculty Selection - Group 1 (501 to 5CT)', 2, 4, 'Group 1', ?, ?, 'ACTIVE', ?)
     `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
+  } else {
+    d.prepare("UPDATE selection_rounds SET status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G1.id);
   }
 
   const roundY2G2 = d.prepare("SELECT id FROM selection_rounds WHERE academic_year = 2 AND semester = 4 AND target_group = 'Group 2'").get();
   if (!roundY2G2) {
     d.prepare(`
       INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-      VALUES ('II-II Faculty Selection - Group 2 (5CU to 5JN)', 2, 4, 'Group 2', ?, ?, 'DRAFT', ?)
+      VALUES ('II-II Faculty Selection - Group 2 (5CU to 5JN)', 2, 4, 'Group 2', ?, ?, 'ACTIVE', ?)
     `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
+  } else {
+    d.prepare("UPDATE selection_rounds SET status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G2.id);
   }
 
-  // Initial Faculty Mapping for Year 2 Core Theory Courses
-  const coreY2Codes = ['A0509234', 'A0507234', 'A0510234', 'A0508234', 'A0017234', 'A0010234'];
-  const y2Subs = d.prepare(`SELECT id, code FROM subjects WHERE academic_year = 2 AND semester = 4 AND code IN (${coreY2Codes.map(() => '?').join(',')})`).all(...coreY2Codes);
-  const facs = d.prepare("SELECT id FROM faculty ORDER BY id LIMIT 30").all();
+  // Also make sure Year 3 rounds are ACTIVE for testing
+  d.prepare("UPDATE selection_rounds SET status = 'ACTIVE' WHERE academic_year = 3 AND target_group IN ('Group 1', 'Group 2')").run();
+
+  // Faculty Mappings for ALL Year 2 Subjects (3 faculties per course per group, capacity 65 each)
+  const y2Subs = d.prepare("SELECT id, code, name FROM subjects WHERE academic_year = 2 AND semester = 4 ORDER BY id").all();
+  const facs = d.prepare("SELECT id FROM faculty ORDER BY id").all();
 
   const insertMap = d.prepare(`
     INSERT OR IGNORE INTO faculty_subject_mappings (faculty_id, subject_id, academic_year, semester, capacity, target_group, status, created_at)
-    VALUES (?, ?, 2, 4, ?, ?, 'ACTIVE', ?)
+    VALUES (?, ?, 2, 4, 65, ?, 'ACTIVE', ?)
   `);
 
-  // Map 3 faculties per course for Group 1 (capacity 65) and Group 2 (capacity 65)
+  let added = 0;
   y2Subs.forEach((sub, sIdx) => {
-    const f1 = facs[(sIdx * 3 + 12) % facs.length];
-    const f2 = facs[(sIdx * 3 + 13) % facs.length];
-    const f3 = facs[(sIdx * 3 + 14) % facs.length];
+    // Pick 3 faculty uniquely cycling through the list
+    const offset = (sIdx * 3) % facs.length;
+    const f1 = facs[offset];
+    const f2 = facs[(offset + 1) % facs.length];
+    const f3 = facs[(offset + 2) % facs.length];
 
-    [f1, f2, f3].forEach(f => {
-      if (f) {
-        insertMap.run(f.id, sub.id, 65, 'Group 1', now);
-        insertMap.run(f.id, sub.id, 65, 'Group 2', now);
-      }
+    ['Group 1', 'Group 2'].forEach(group => {
+      [f1, f2, f3].forEach(f => {
+        if (f) {
+          const res = insertMap.run(f.id, sub.id, group, now);
+          if (res.changes > 0) added += res.changes;
+        }
+      });
     });
   });
 
-  console.log('[SeedYear2Subjects] Completed II-II subjects, rounds, and dynamic mappings setup.');
+  console.log(`[SeedYear2Subjects] Added ${added} new faculty mappings for Year 2 courses.`);
+  console.log('[SeedYear2Subjects] Completed II-II subjects, rounds (ACTIVE), and full mappings setup.');
 }
 
 if (require.main === module) {
