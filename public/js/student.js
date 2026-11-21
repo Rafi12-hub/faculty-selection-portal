@@ -230,13 +230,6 @@ function renderStudentSubjects() {
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs" aria-label="Faculty availability legend">
-        <span class="font-bold text-slate-700">Faculty availability:</span>
-        <span class="inline-flex items-center gap-2 text-emerald-800"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500" aria-hidden="true"></span>Available</span>
-        <span class="inline-flex items-center gap-2 text-amber-800"><span class="w-2.5 h-2.5 rounded-full bg-amber-400" aria-hidden="true"></span>Filling Fast</span>
-        <span class="inline-flex items-center gap-2 text-rose-800"><span class="w-2.5 h-2.5 rounded-full bg-rose-500" aria-hidden="true"></span>Full</span>
-      </div>
-
       <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
         <div>
           Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; <span class="px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">${STATE.student.section === 'Group 1' ? 'Group 1 (Group A: 501–5E2)' : (STATE.student.section === 'Group 2' ? 'Group 2 (Group B: 5E3–5KP)' : STATE.student.section)}</span>
@@ -274,37 +267,6 @@ function renderStudentSubjects() {
         <i class="fa-solid fa-circle-info text-indigo-600 text-sm mt-0.5"></i>
         <div>
           <strong>Instructions:</strong> Mark only one oval for each subject below and click <strong>Confirm Selection</strong>. Seats are allocated strictly on a First-Come, First-Served basis and reservations are permanent once confirmed.
-        </div>
-      </div>
-
-      <!-- 3-Color Availability Legend -->
-      <div class="p-4 bg-white border border-slate-200 rounded-xl shadow-sm text-xs space-y-2">
-        <div class="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-          <i class="fa-solid fa-palette text-blue-600"></i>
-          <span>Faculty Availability Status Legend:</span>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-          <div class="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold">
-            <span class="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0"></span>
-            <div>
-              <div class="text-xs font-bold text-emerald-900">Green · Available</div>
-              <div class="text-[10px] text-emerald-700 font-normal">1–40% capacity occupied</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-semibold">
-            <span class="w-3 h-3 rounded-full bg-amber-500 animate-pulse flex-shrink-0"></span>
-            <div>
-              <div class="text-xs font-bold text-amber-900">Yellow · Filling Fast</div>
-              <div class="text-[10px] text-amber-700 font-normal">&gt;40% and &lt;100% occupied</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 font-semibold">
-            <span class="w-3 h-3 rounded-full bg-rose-500 flex-shrink-0"></span>
-            <div>
-              <div class="text-xs font-bold text-rose-900">Red · Full</div>
-              <div class="text-[10px] text-rose-700 font-normal">Faculty Capacity Reached</div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
