@@ -1393,22 +1393,114 @@ async function loadAdminStudents() {
   }
 }
 
+// Module state for student dataset filtering
+let CURRENT_STUDENT_FILTERS = {
+  search: '',
+  year: 'ALL',
+  group: 'ALL'
+};
+
+function setStudentYearFilter(year) {
+  CURRENT_STUDENT_FILTERS.year = String(year);
+  const yearSelect = document.getElementById('admin-stu-year-filter');
+  if (yearSelect) yearSelect.value = String(year);
+  filterAdminStudents();
+}
+
+function setStudentGroupFilter(group) {
+  CURRENT_STUDENT_FILTERS.group = group;
+  const groupSelect = document.getElementById('admin-stu-group-filter');
+  if (groupSelect) groupSelect.value = group;
+  filterAdminStudents();
+}
+
+function exportStudentsToCSV() {
+  const students = ADMIN_DATA.students || [];
+  if (students.length === 0) {
+    showToast('No students available to export.', 'warning');
+    return;
+  }
+
+  const term = (CURRENT_STUDENT_FILTERS.search || '').toUpperCase();
+  const year = CURRENT_STUDENT_FILTERS.year;
+  const group = CURRENT_STUDENT_FILTERS.group;
+
+  const filtered = students.filter(s => {
+    const matchesSearch = !term || s.reg_no.toUpperCase().includes(term) || s.name.toUpperCase().includes(term);
+    const matchesYear = year === 'ALL' || String(s.academic_year) === year;
+    const matchesGroup = group === 'ALL' || (s.section && s.section === group);
+    return matchesSearch && matchesYear && matchesGroup;
+  });
+
+  if (filtered.length === 0) {
+    showToast('No matching students for the selected filters.', 'warning');
+    return;
+  }
+
+  let csv = '\uFEFF';
+  csv += 'Registration Number,Student Name,Academic Year,Semester,Group,Confirmed Courses,Status\n';
+
+  filtered.forEach(s => {
+    const yearStr = s.academic_year === 2 ? '2nd Year (II-II)' : (s.academic_year === 3 ? '3rd Year (III-II)' : `Year ${s.academic_year}`);
+    const row = [
+      `"${s.reg_no}"`,
+      `"${(s.name || '').replace(/"/g, '""')}"`,
+      `"${yearStr}"`,
+      `"${s.semester}"`,
+      `"${s.section || 'Group 1'}"`,
+      `"${s.confirmed_selections_count || 0}"`,
+      `"${s.status || 'ACTIVE'}"`
+    ];
+    csv += row.join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const filterDesc = `${year === 'ALL' ? 'all-years' : `year-${year}`}_${group === 'ALL' ? 'all-groups' : group.replace(/\s+/g, '-').toLowerCase()}`;
+  a.download = `students_${filterDesc}_${Date.now()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`Exported ${filtered.length} students to Excel CSV successfully!`, 'success');
+}
+
 function renderStudentsList() {
   const container = document.getElementById('admin-tab-content');
-  const students = ADMIN_DATA.students;
+  const students = ADMIN_DATA.students || [];
 
   const totalCount = students.length;
-  const g1Count = students.filter(s => (s.section && s.section.includes('1')) || (s.reg_no <= '24091A05E2')).length;
-  const g2Count = students.filter(s => (s.section && s.section.includes('2')) || (s.reg_no > '24091A05E2')).length;
+
+  // Year 2 Breakdown (II-II: Sem 4)
+  const y2Students = students.filter(s => s.academic_year === 2);
+  const y2Total = y2Students.length;
+  const y2G1 = y2Students.filter(s => s.section === 'Group 1').length;
+  const y2G2 = y2Students.filter(s => s.section === 'Group 2').length;
+
+  // Year 3 Breakdown (III-II: Sem 6 or 5)
+  const y3Students = students.filter(s => s.academic_year === 3);
+  const y3Total = y3Students.length;
+  const y3G1 = y3Students.filter(s => s.section === 'Group 1').length;
+  const y3G2 = y3Students.filter(s => s.section === 'Group 2').length;
 
   container.innerHTML = `
     <div class="space-y-6">
+      <!-- Header -->
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h3 class="text-base font-bold text-slate-900">3rd Year Student Dataset Management</h3>
-          <p class="text-xs text-slate-500">Students divided into 2 groups: Group 1 (501 to 5E2) and Group 2 / Group B (5E3 to 5KP).</p>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-blue-600"></span>
+            <h3 class="text-base font-bold text-slate-900">Student Dataset Management (Year-wise & Group-wise)</h3>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            Browse, filter, and manage both <strong>2nd Year (II-II)</strong> and <strong>3rd Year (III-II)</strong> cohorts partitioned by <strong>Group 1</strong> (501–5E2) and <strong>Group 2</strong> (5E3–5KP).
+          </p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="exportStudentsToCSV()" class="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-colors" title="Download Excel Compatible CSV">
+            <i class="fa-solid fa-file-excel"></i>
+            <span>Export to Excel</span>
+          </button>
           <button onclick="openBulkStudentsModal()" class="py-2 px-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors">
             <i class="fa-solid fa-file-import"></i>
             <span>Bulk / Sample Add</span>
@@ -1420,65 +1512,117 @@ function renderStudentsList() {
         </div>
       </div>
 
-      <!-- Group Summary Banner -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 font-bold">
-            <i class="fa-solid fa-user-graduate"></i>
+      <!-- Year & Group Metric Summary Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- All Enrolled -->
+        <div onclick="setStudentYearFilter('ALL'); setStudentGroupFilter('ALL');" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-slate-400 cursor-pointer transition-all">
+          <div class="flex items-center justify-between">
+            <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Enrolled</div>
+            <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 text-sm">
+              <i class="fa-solid fa-users"></i>
+            </div>
           </div>
-          <div>
-            <div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">3rd Year Total</div>
-            <div class="text-lg font-black text-slate-900">${totalCount} Students</div>
-          </div>
-        </div>
-
-        <div class="bg-blue-50/50 p-4 rounded-2xl border border-blue-200 shadow-sm flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
-            1
-          </div>
-          <div>
-            <div class="text-[11px] font-semibold text-blue-700 uppercase tracking-wider">Group 1 (501 to 5E2)</div>
-            <div class="text-lg font-black text-blue-900">${g1Count} Students</div>
+          <div class="text-2xl font-black text-slate-900 mt-2">${totalCount} Students</div>
+          <div class="mt-2 text-[11px] text-slate-500 flex items-center gap-2">
+            <span>Click to view all cohorts</span>
           </div>
         </div>
 
-        <div class="bg-purple-50/50 p-4 rounded-2xl border border-purple-200 shadow-sm flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold">
-            2
+        <!-- 2nd Year (II-II) -->
+        <div class="bg-gradient-to-br from-teal-50/60 to-emerald-50/40 p-4 rounded-2xl border border-teal-200 shadow-sm">
+          <div class="flex items-center justify-between">
+            <div class="text-[11px] font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-teal-500"></span>
+              <span>2nd Year (II-II &bull; Sem 4)</span>
+            </div>
+            <button onclick="setStudentYearFilter(2); setStudentGroupFilter('ALL');" class="text-[10px] font-bold text-teal-700 hover:underline">
+              View All Year 2
+            </button>
           </div>
-          <div>
-            <div class="text-[11px] font-semibold text-purple-700 uppercase tracking-wider">Group 2 / Group B (Remaining)</div>
-            <div class="text-lg font-black text-purple-900">${g2Count} Students</div>
+          <div class="text-2xl font-black text-teal-950 mt-1">${y2Total} <span class="text-xs font-semibold text-teal-700">Students</span></div>
+          <div class="mt-2.5 pt-2 border-t border-teal-200/60 flex items-center justify-between text-xs gap-2">
+            <button onclick="setStudentYearFilter(2); setStudentGroupFilter('Group 1');" class="px-2 py-1 bg-white hover:bg-teal-100/70 border border-teal-200 rounded-lg text-[11px] font-bold text-teal-900 transition flex items-center gap-1">
+              <span>Group 1:</span>
+              <span class="mono-font text-teal-700">${y2G1}</span>
+            </button>
+            <button onclick="setStudentYearFilter(2); setStudentGroupFilter('Group 2');" class="px-2 py-1 bg-white hover:bg-teal-100/70 border border-teal-200 rounded-lg text-[11px] font-bold text-teal-900 transition flex items-center gap-1">
+              <span>Group 2:</span>
+              <span class="mono-font text-teal-700">${y2G2}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3rd Year (III-II) -->
+        <div class="bg-gradient-to-br from-indigo-50/60 to-blue-50/40 p-4 rounded-2xl border border-indigo-200 shadow-sm">
+          <div class="flex items-center justify-between">
+            <div class="text-[11px] font-bold text-indigo-800 uppercase tracking-wider flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+              <span>3rd Year (III-II &bull; Sem 6)</span>
+            </div>
+            <button onclick="setStudentYearFilter(3); setStudentGroupFilter('ALL');" class="text-[10px] font-bold text-indigo-700 hover:underline">
+              View All Year 3
+            </button>
+          </div>
+          <div class="text-2xl font-black text-indigo-950 mt-1">${y3Total} <span class="text-xs font-semibold text-indigo-700">Students</span></div>
+          <div class="mt-2.5 pt-2 border-t border-indigo-200/60 flex items-center justify-between text-xs gap-2">
+            <button onclick="setStudentYearFilter(3); setStudentGroupFilter('Group 1');" class="px-2 py-1 bg-white hover:bg-indigo-100/70 border border-indigo-200 rounded-lg text-[11px] font-bold text-indigo-900 transition flex items-center gap-1">
+              <span>Group 1:</span>
+              <span class="mono-font text-indigo-700">${y3G1}</span>
+            </button>
+            <button onclick="setStudentYearFilter(3); setStudentGroupFilter('Group 2');" class="px-2 py-1 bg-white hover:bg-indigo-100/70 border border-indigo-200 rounded-lg text-[11px] font-bold text-indigo-900 transition flex items-center gap-1">
+              <span>Group 2:</span>
+              <span class="mono-font text-indigo-700">${y3G2}</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Search & Group Filter Bar -->
-      <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center gap-3 justify-between">
-        <div class="relative w-full sm:w-72">
-          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-          <input type="text" id="admin-stu-search" placeholder="Search name or reg no..." oninput="filterAdminStudents()" class="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+      <!-- Search & Multi-Filter Bar -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-3 justify-between">
+        <div class="relative w-full md:w-80">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input type="text" id="admin-stu-search" placeholder="Search by name or registration number..." oninput="filterAdminStudents()" class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition">
         </div>
-        <div class="flex items-center gap-2 w-full sm:w-auto">
-          <span class="text-xs text-slate-500 font-semibold whitespace-nowrap">Filter Group:</span>
-          <select id="admin-stu-group-filter" onchange="filterAdminStudents()" class="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
-            <option value="ALL">All Groups (${totalCount})</option>
-            <option value="Group 1">Group 1 (501 to 5E2 - ${g1Count})</option>
-            <option value="Group 2">Group 2 / Group B (${g2Count})</option>
-          </select>
+
+        <div class="flex items-center gap-3 w-full md:w-auto flex-wrap">
+          <!-- Year Filter -->
+          <div class="flex items-center gap-1.5 text-xs">
+            <span class="text-slate-500 font-semibold whitespace-nowrap">Cohort Year:</span>
+            <select id="admin-stu-year-filter" onchange="filterAdminStudents()" class="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:bg-white">
+              <option value="ALL">All Cohorts (${totalCount})</option>
+              <option value="2">2nd Year (II-II &bull; Sem 4 - ${y2Total})</option>
+              <option value="3">3rd Year (III-II &bull; Sem 6 - ${y3Total})</option>
+            </select>
+          </div>
+
+          <!-- Group Filter -->
+          <div class="flex items-center gap-1.5 text-xs">
+            <span class="text-slate-500 font-semibold whitespace-nowrap">Group / Section:</span>
+            <select id="admin-stu-group-filter" onchange="filterAdminStudents()" class="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:bg-white">
+              <option value="ALL">All Groups</option>
+              <option value="Group 1">Group 1 (501 to 5E2)</option>
+              <option value="Group 2">Group 2 / Group B (5E3 to 5KP)</option>
+            </select>
+          </div>
+
+          <!-- Visible Counter Pill -->
+          <span class="px-2.5 py-1.5 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs border border-slate-200">
+            <span id="admin-stu-visible-count">${totalCount}</span> / ${totalCount} Shown
+          </span>
         </div>
       </div>
 
+      <!-- Students Table -->
       <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs" id="admin-students-table">
             <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
               <tr>
                 <th class="py-3.5 px-6">Reg Number & Name</th>
-                <th class="py-3.5 px-6">Academic Year & Sem</th>
-                <th class="py-3.5 px-6">Group</th>
+                <th class="py-3.5 px-6">Academic Cohort</th>
+                <th class="py-3.5 px-6">Assigned Group</th>
                 <th class="py-3.5 px-6">Confirmed Courses</th>
-                <th class="py-3.5 px-6">Status</th>
+                <th class="py-3.5 px-6">Account Status</th>
                 <th class="py-3.5 px-6 text-right">Actions</th>
               </tr>
             </thead>
@@ -1494,23 +1638,37 @@ function renderStudentsList() {
                   </td>
                 </tr>
               ` : students.map(s => `
-                <tr class="hover:bg-slate-50/80 transition-colors stu-row" data-reg="${s.reg_no.toUpperCase()}" data-name="${s.name.toUpperCase()}" data-group="${s.section}">
+                <tr class="hover:bg-slate-50/80 transition-colors stu-row" data-reg="${s.reg_no.toUpperCase()}" data-name="${s.name.toUpperCase()}" data-year="${s.academic_year}" data-sem="${s.semester}" data-group="${s.section}">
                   <td class="py-3.5 px-6">
                     <div class="font-bold text-slate-900">${s.name}</div>
                     <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.reg_no}</div>
                   </td>
-                  <td class="py-3.5 px-6 font-semibold text-slate-700">
-                    Year ${s.academic_year} &bull; Sem ${s.semester}
+                  <td class="py-3.5 px-6">
+                    ${s.academic_year === 2 ? `
+                      <span class="px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 bg-teal-50 text-teal-800 border border-teal-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-teal-600"></span>
+                        2nd Year &bull; Sem ${s.semester}
+                      </span>
+                    ` : (s.academic_year === 3 ? `
+                      <span class="px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-800 border border-indigo-200">
+                        <span class="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                        3rd Year &bull; Sem ${s.semester}
+                      </span>
+                    ` : `
+                      <span class="px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 border border-slate-200">
+                        Year ${s.academic_year} &bull; Sem ${s.semester}
+                      </span>
+                    `)}
                   </td>
                   <td class="py-3.5 px-6 font-bold text-slate-800">
-                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 ${s.section && s.section.includes('1') ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-purple-100 text-purple-800 border border-purple-200'}">
-                      <span class="w-1.5 h-1.5 rounded-full ${s.section && s.section.includes('1') ? 'bg-blue-600' : 'bg-purple-600'}"></span>
-                      ${s.section.startsWith('Group') ? s.section : `Group ${s.section}`}
+                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 ${s.section === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-purple-100 text-purple-800 border border-purple-200'}">
+                      <span class="w-1.5 h-1.5 rounded-full ${s.section === 'Group 1' ? 'bg-blue-600' : 'bg-purple-600'}"></span>
+                      ${s.section === 'Group 1' ? 'Group 1 (501–5E2)' : (s.section === 'Group 2' ? 'Group 2 (5E3–5KP)' : s.section)}
                     </span>
                   </td>
                   <td class="py-3.5 px-6">
                     <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${s.confirmed_selections_count > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
-                      ${s.confirmed_selections_count} Confirmed
+                      ${s.confirmed_selections_count || 0} Confirmed
                     </span>
                   </td>
                   <td class="py-3.5 px-6">
@@ -1541,27 +1699,61 @@ function renderStudentsList() {
 
 function filterAdminStudents() {
   const searchInput = document.getElementById('admin-stu-search');
+  const yearFilter = document.getElementById('admin-stu-year-filter');
   const groupFilter = document.getElementById('admin-stu-group-filter');
-  if (!searchInput || !groupFilter) return;
+  const counterSpan = document.getElementById('admin-stu-visible-count');
 
-  const term = searchInput.value.trim().toUpperCase();
-  const selectedGroup = groupFilter.value;
+  const term = searchInput ? searchInput.value.trim().toUpperCase() : '';
+  const selectedYear = yearFilter ? yearFilter.value : 'ALL';
+  const selectedGroup = groupFilter ? groupFilter.value : 'ALL';
+
+  CURRENT_STUDENT_FILTERS.search = term;
+  CURRENT_STUDENT_FILTERS.year = selectedYear;
+  CURRENT_STUDENT_FILTERS.group = selectedGroup;
 
   const rows = document.querySelectorAll('.stu-row');
+  let visibleCount = 0;
+
   rows.forEach(r => {
     const reg = r.getAttribute('data-reg') || '';
     const name = r.getAttribute('data-name') || '';
+    const year = r.getAttribute('data-year') || '';
     const group = r.getAttribute('data-group') || '';
 
     const matchesSearch = !term || reg.includes(term) || name.includes(term);
+    const matchesYear = selectedYear === 'ALL' || year === selectedYear;
     const matchesGroup = selectedGroup === 'ALL' || group === selectedGroup;
 
-    if (matchesSearch && matchesGroup) {
+    if (matchesSearch && matchesYear && matchesGroup) {
       r.style.display = '';
+      visibleCount++;
     } else {
       r.style.display = 'none';
     }
   });
+
+  if (counterSpan) {
+    counterSpan.textContent = visibleCount;
+  }
+}
+
+function updateAddStudentSemesters(year) {
+  const semSelect = document.getElementById('stu-sem-input');
+  if (!semSelect) return;
+  const y = parseInt(year, 10);
+  if (y === 2) {
+    semSelect.innerHTML = `
+      <option value="4" selected>Sem 4 (II-II)</option>
+      <option value="3">Sem 3 (II-I)</option>
+    `;
+  } else if (y === 3) {
+    semSelect.innerHTML = `
+      <option value="6" selected>Sem 6 (III-II)</option>
+      <option value="5">Sem 5 (III-I)</option>
+    `;
+  } else {
+    semSelect.innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(s => `<option value="${s}">Sem ${s}</option>`).join('');
+  }
 }
 
 function openAddStudentModal() {
@@ -1572,7 +1764,7 @@ function openAddStudentModal() {
       <form id="form-add-student" onsubmit="submitAddStudent(event)" class="space-y-4 text-xs">
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Registration Number <span class="text-rose-500">*</span></label>
-          <input type="text" id="stu-reg" required placeholder="e.g. 2024CS101" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase mono-font">
+          <input type="text" id="stu-reg" required placeholder="e.g. 23091A0501" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase mono-font">
         </div>
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Student Full Name <span class="text-rose-500">*</span></label>
@@ -1580,32 +1772,28 @@ function openAddStudentModal() {
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Year</label>
-            <select id="stu-year-input" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-              <option value="1">Year 1</option>
-              <option value="2">Year 2</option>
-              <option value="3" selected>Year 3</option>
-              <option value="4">Year 4</option>
+            <label class="block font-semibold text-slate-700 mb-1">Cohort Year</label>
+            <select id="stu-year-input" onchange="updateAddStudentSemesters(this.value)" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+              <option value="2">2nd Year (II-II)</option>
+              <option value="3" selected>3rd Year (III-II)</option>
+              <option value="1">1st Year</option>
+              <option value="4">4th Year</option>
             </select>
           </div>
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Semester</label>
-            <select id="stu-sem-input" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-              <option value="1">Sem 1</option>
-              <option value="2">Sem 2</option>
+            <select id="stu-sem-input" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+              <option value="6" selected>Sem 6 (III-II)</option>
+              <option value="5">Sem 5 (III-I)</option>
+              <option value="4">Sem 4 (II-II)</option>
               <option value="3">Sem 3</option>
-              <option value="4">Sem 4</option>
-              <option value="5" selected>Sem 5</option>
-              <option value="6">Sem 6</option>
-              <option value="7">Sem 7</option>
-              <option value="8">Sem 8</option>
             </select>
           </div>
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Group</label>
-            <select id="stu-sec-input" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <select id="stu-sec-input" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
               <option value="Group 1">Group 1 (501 to 5E2)</option>
-              <option value="Group 2">Group 2 / Group B (5E3 to 5KP)</option>
+              <option value="Group 2">Group 2 (5E3 to 5KP)</option>
             </select>
           </div>
         </div>
