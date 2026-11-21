@@ -3,6 +3,7 @@ const router = express.Router();
 const { db } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
+const { getFacultyAvailability } = require('../utils/facultyAvailability');
 
 router.use(authenticateToken);
 
@@ -58,10 +59,21 @@ router.get('/', (req, res) => {
 
     const subjects = db.prepare(sql).all(...params);
 
-    const enriched = subjects.map(s => ({
-      ...s,
-      remaining_seats: Math.max(0, s.total_capacity - s.total_allocated)
-    }));
+    const enriched = subjects.map(s => {
+      if (req.user.role === 'STUDENT') {
+        const {
+          total_capacity,
+          total_allocated,
+          ...studentSubject
+        } = s;
+        return studentSubject;
+      }
+
+      return {
+        ...s,
+        remaining_seats: Math.max(0, s.total_capacity - s.total_allocated)
+      };
+    });
 
     res.json({ success: true, subjects: enriched });
   } catch (error) {
@@ -112,10 +124,23 @@ router.get('/:id', (req, res) => {
       ORDER BY f.name ASC
     `).all(subject.id, subject.academic_year, subject.semester);
 
-    const enrichedMappings = mappings.map(m => ({
-      ...m,
-      available_seats: Math.max(0, m.capacity - m.allocated_seats)
-    }));
+    const enrichedMappings = mappings.map(m => {
+      const availability = getFacultyAvailability(m.allocated_seats, m.capacity);
+      if (req.user.role === 'STUDENT') {
+        const {
+          capacity,
+          allocated_seats,
+          ...studentMapping
+        } = m;
+        return { ...studentMapping, ...availability };
+      }
+
+      return {
+        ...m,
+        ...availability,
+        available_seats: Math.max(0, m.capacity - m.allocated_seats)
+      };
+    });
 
     res.json({
       success: true,

@@ -29,8 +29,7 @@ router.get('/my', requireStudent, (req, res) => {
         f.qualification as faculty_qualification,
         f.specialization as faculty_specialization,
         f.profile_image as faculty_profile_image,
-        m.id as mapping_id,
-        m.capacity
+        m.id as mapping_id
       FROM selections sel
       JOIN subjects sub ON sel.subject_id = sub.id
       JOIN faculty f ON sel.faculty_id = f.id
@@ -147,7 +146,7 @@ router.post('/reserve', requireStudent, (req, res) => {
       `).get(mapping.id).count;
 
       if (currentAllocations >= mapping.capacity) {
-        throw new Error(`Seats are full! All ${mapping.capacity} seats for ${mapping.faculty_name} in ${mapping.subject_code} have been taken. Please choose another faculty member.`);
+        throw new Error(`Faculty capacity has been reached for ${mapping.faculty_name} in ${mapping.subject_code}. Please choose another faculty member.`);
       }
 
       // 6. Server-side reservation timestamp
@@ -170,16 +169,12 @@ router.post('/reserve', requireStudent, (req, res) => {
       );
 
       const selectionId = resInsert.lastInsertRowid;
-      const newRemainingSeats = mapping.capacity - (currentAllocations + 1);
-
       return {
         selectionId,
         serverTimestamp,
         subjectName: mapping.subject_name,
         subjectCode: mapping.subject_code,
         facultyName: mapping.faculty_name,
-        remainingSeats: newRemainingSeats,
-        totalCapacity: mapping.capacity,
         roundName: currentRound ? currentRound.name : null
       };
     });
@@ -297,7 +292,7 @@ router.post('/reserve-batch', requireStudent, (req, res) => {
         `).get(mapping.id).count;
 
         if (currentAllocations >= mapping.capacity) {
-          const capErr = new Error(`Seats full for ${mapping.faculty_name} in ${mapping.subject_name} (${mapping.subject_code})! All ${mapping.capacity} seats have been taken. Please choose another faculty.`);
+          const capErr = new Error(`Faculty capacity has been reached for ${mapping.faculty_name} in ${mapping.subject_name} (${mapping.subject_code}). Please choose another faculty.`);
           capErr.full_subject_id = mapping.subject_id;
           capErr.full_subject_name = mapping.subject_name;
           capErr.full_mapping_id = mapping.id;

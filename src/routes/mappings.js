@@ -3,6 +3,7 @@ const router = express.Router();
 const { db } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
+const { getFacultyAvailability } = require('../utils/facultyAvailability');
 
 router.use(authenticateToken);
 
@@ -78,11 +79,23 @@ router.get('/', (req, res) => {
 
     const mappings = db.prepare(sql).all(...params);
 
-    const enriched = mappings.map(m => ({
-      ...m,
-      available_seats: Math.max(0, m.capacity - m.allocated_seats),
-      occupancy_rate: m.capacity > 0 ? Math.round((m.allocated_seats / m.capacity) * 100) : 0
-    }));
+    const enriched = mappings.map(m => {
+      const availability = getFacultyAvailability(m.allocated_seats, m.capacity);
+      if (req.user.role === 'STUDENT') {
+        const {
+          capacity,
+          allocated_seats,
+          ...studentMapping
+        } = m;
+        return { ...studentMapping, ...availability };
+      }
+
+      return {
+        ...m,
+        ...availability,
+        available_seats: Math.max(0, m.capacity - m.allocated_seats)
+      };
+    });
 
     res.json({ success: true, mappings: enriched });
   } catch (error) {

@@ -2,6 +2,7 @@ const { db, withTransaction } = require('../src/config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../src/middleware/auth');
+const { getFacultyAvailability } = require('../src/utils/facultyAvailability');
 const app = require('../src/server');
 const http = require('http');
 
@@ -41,6 +42,10 @@ async function request(path, options = {}) {
   return { status: res.status, ok: res.ok, data };
 }
 
+function authHeaders(token) {
+  return { Authorization: 'Bearer ' + token };
+}
+
 let adminToken = '';
 let student1Token = '';
 let student2Token = '';
@@ -70,6 +75,9 @@ async function runTests() {
     const initSubjectCount = db.prepare('SELECT count(*) as count FROM subjects').get().count;
     assert(initFacultyCount === 0, 'Initial faculty list is strictly empty');
     assert(initSubjectCount === 0, 'Initial subject list is strictly empty');
+    assert(getFacultyAvailability(2, 5).availability_status === 'AVAILABLE', '40% occupancy remains Available');
+    assert(getFacultyAvailability(3, 5).availability_status === 'FILLING_FAST', 'Occupancy above 40% is Filling Fast');
+    assert(getFacultyAvailability(5, 5).availability_status === 'FULL', 'Capacity occupancy is Full');
 
     // 2. Role Restriction Check: Exactly ADMIN and STUDENT
     console.log('\n--- 2. Testing Role Restriction (Only ADMIN & STUDENT) ---');
@@ -303,6 +311,37 @@ async function runTests() {
       headers: { Authorization: `Bearer ${student1Token}` }
     });
     assert(eligibleSubs.status === 200 && eligibleSubs.data.subjects.length === 2, 'Student 1 receives exactly 2 eligible subjects matching Year 3, Sem 5');
+    assert(
+      !Object.hasOwn(eligibleSubs.data.subjects[0], 'total_capacity')
+        && !Object.hasOwn(eligibleSubs.data.subjects[0], 'total_allocated')
+        && !Object.hasOwn(eligibleSubs.data.subjects[0], 'remaining_seats'),
+      'Student subject data does not expose capacity or allocation counts'
+    );
+
+    const studentMappings = await request('/api/mappings', {
+      headers: authHeaders(student1Token)
+    });
+    const studentMap1 = studentMappings.data.mappings.find(m => m.id === map1Id);
+    assert(
+      studentMap1.availability_status === 'AVAILABLE'
+        && !Object.hasOwn(studentMap1, 'capacity')
+        && !Object.hasOwn(studentMap1, 'allocated_seats')
+        && !Object.hasOwn(studentMap1, 'available_seats')
+        && !Object.hasOwn(studentMap1, 'occupancy_rate'),
+      'Student faculty mapping provides categorical availability only'
+    );
+
+    const studentSubjectDetails = await request(`/api/subjects/${sub1Id}`, {
+      headers: authHeaders(student1Token)
+    });
+    const studentSubjectMapping = studentSubjectDetails.data.subject.faculty_mappings.find(m => m.mapping_id === map1Id);
+    assert(
+      studentSubjectMapping.availability_status === 'AVAILABLE'
+        && !Object.hasOwn(studentSubjectMapping, 'capacity')
+        && !Object.hasOwn(studentSubjectMapping, 'allocated_seats')
+        && !Object.hasOwn(studentSubjectMapping, 'available_seats'),
+      'Student faculty detail data does not expose seat metrics'
+    );
 
     // 11. Atomic FCFS Allocation Test: Student 1 selects Dr. Priya Sharma for CS501 (Capacity = 1)
     console.log('\n--- 11. Testing FCFS Reservation: Student 1 claims Dr. Priya Sharma (Capacity: 1) ---');
@@ -312,8 +351,23 @@ async function runTests() {
       body: { mapping_id: map2Id }
     });
     assert(res1.status === 201 && res1.data.success, 'Student 1 successfully reserves seat for Dr. Priya Sharma');
-    assert(res1.data.selection.remainingSeats === 0, 'Remaining seats for Dr. Priya Sharma reduced immediately to 0');
+    assert(
+      !Object.hasOwn(res1.data.selection, 'remainingSeats')
+        && !Object.hasOwn(res1.data.selection, 'totalCapacity'),
+      'Successful student reservation response does not expose numerical occupancy'
+    );
     const s1SelectionId = res1.data.selection.selectionId;
+
+    const adminMappingsAfterFirstReservation = await request('/api/mappings', {
+      headers: authHeaders(adminToken)
+    });
+    const adminMap2 = adminMappingsAfterFirstReservation.data.mappings.find(m => m.id === map2Id);
+    assert(
+      adminMap2.allocated_seats === 1
+        && adminMap2.available_seats === 0
+        && adminMap2.availability_status === 'FULL',
+      'Administrator mapping data retains exact seat metrics and availability status'
+    );
 
     // Student 1 tries to select another faculty for the same subject CS501
     const resDuplicateSubject = await request('/api/selections/reserve', {
@@ -331,7 +385,15 @@ async function runTests() {
       body: { mapping_id: map2Id }
     });
     assert(res2Full.status === 409, 'Student 2 blocked with clear message when seats are full');
-    assert(res2Full.data.message.includes('Seats are full'), 'Error message clearly states seats are full');
+    assert(res2Full.data.message.includes('capacity has been reached'), 'Error message clearly states faculty capacity has been reached');
+
+    const studentMappingsAfterFirstAllocation = await request('/api/mappings', {
+      headers: authHeaders(student1Token)
+    });
+    assert(
+      studentMappingsAfterFirstAllocation.data.mappings.find(m => m.id === map1Id).availability_status === 'FILLING_FAST',
+      'Availability status updates from successful allocations only'
+    );
 
     // Student 2 instead selects Dr. Ravi Kumar (Capacity = 2)
     const res2Success = await request('/api/selections/reserve', {
@@ -340,7 +402,7 @@ async function runTests() {
       body: { mapping_id: map1Id }
     });
     assert(res2Success.status === 201 && res2Success.data.success, 'Student 2 successfully reserves Dr. Ravi Kumar (1 seat remains)');
-    assert(res2Success.data.selection.remainingSeats === 1, 'Remaining seats for Dr. Ravi Kumar is now 1');
+    assert(!Object.hasOwn(res2Success.data.selection, 'remainingSeats'), 'Student reservation response continues to hide remaining seats');
 
     // Student 3 selects Dr. Ravi Kumar (Takes final seat 2 of 2)
     const res3Success = await request('/api/selections/reserve', {
@@ -349,7 +411,15 @@ async function runTests() {
       body: { mapping_id: map1Id }
     });
     assert(res3Success.status === 201 && res3Success.data.success, 'Student 3 takes final remaining seat for Dr. Ravi Kumar');
-    assert(res3Success.data.selection.remainingSeats === 0, 'Dr. Ravi Kumar is now fully booked (0 seats remaining)');
+    assert(!Object.hasOwn(res3Success.data.selection, 'totalCapacity'), 'Student reservation response continues to hide total capacity');
+
+    const studentSelections = await request('/api/selections/my', {
+      headers: authHeaders(student1Token)
+    });
+    assert(
+      studentSelections.data.selections.every(s => !Object.hasOwn(s, 'capacity')),
+      'Student selection history does not expose faculty capacity'
+    );
 
     // 13. Rule: Capacity cannot be reduced below allocated seats
     console.log('\n--- 13. Testing Capacity Lowering Rule ---');

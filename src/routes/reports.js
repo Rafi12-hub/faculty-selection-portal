@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
+const { getFacultyAvailability } = require('../utils/facultyAvailability');
 
 router.use(authenticateToken);
 router.use(requireAdmin);
@@ -93,11 +94,15 @@ router.get('/faculty-allocations', (req, res) => {
       ORDER BY f.name ASC, m.academic_year ASC, m.semester ASC
     `).all();
 
-    const enriched = allocations.map(a => ({
-      ...a,
-      available_seats: Math.max(0, a.capacity - a.allocated_seats),
-      occupancy_pct: a.capacity > 0 ? Math.round((a.allocated_seats / a.capacity) * 100) : 0
-    }));
+    const enriched = allocations.map(a => {
+      const availability = getFacultyAvailability(a.allocated_seats, a.capacity);
+      return {
+        ...a,
+        ...availability,
+        available_seats: Math.max(0, a.capacity - a.allocated_seats),
+        occupancy_pct: a.capacity > 0 ? Math.round((a.allocated_seats / a.capacity) * 100) : 0
+      };
+    });
 
     res.json({ success: true, allocations: enriched });
   } catch (error) {

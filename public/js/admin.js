@@ -1097,6 +1097,10 @@ function renderMappingsList() {
                           <span class="font-bold ${m.available_seats === 0 ? 'text-rose-600' : 'text-emerald-600'}">
                             ${m.available_seats === 0 ? 'FULL' : `${m.available_seats} seats`}
                           </span>
+                          <div class="mt-1 inline-flex items-center gap-1.5 text-[10px] font-semibold ${m.availability_status === 'FULL' ? 'text-rose-700' : (m.availability_status === 'FILLING_FAST' ? 'text-amber-700' : 'text-emerald-700')}">
+                            <span class="h-2 w-2 rounded-full ${m.availability_status === 'FULL' ? 'bg-rose-500' : (m.availability_status === 'FILLING_FAST' ? 'bg-amber-400' : 'bg-emerald-500')}" aria-hidden="true"></span>
+                            ${m.availability_label}
+                          </div>
                         </td>
                         <td class="py-3 px-6">
                           <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${m.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
@@ -2602,11 +2606,12 @@ async function loadAdminReports() {
                   <th class="py-3 px-6">Allocated</th>
                   <th class="py-3 px-6">Available</th>
                   <th class="py-3 px-6">Occupancy Rate</th>
+                  <th class="py-3 px-6">Availability Status</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-100">
                 ${allocations.length === 0 ? `
-                  <tr><td colspan="7" class="py-8 text-center text-slate-400">No mappings to report.</td></tr>
+                  <tr><td colspan="8" class="py-8 text-center text-slate-400">No mappings to report.</td></tr>
                 ` : allocations.map(a => `
                   <tr>
                     <td class="py-3 px-6 font-bold text-slate-900">${a.faculty_name} (${a.faculty_code})</td>
@@ -2616,6 +2621,12 @@ async function loadAdminReports() {
                     <td class="py-3 px-6 font-bold text-blue-600">${a.allocated_seats}</td>
                     <td class="py-3 px-6 font-bold text-emerald-600">${a.available_seats}</td>
                     <td class="py-3 px-6 font-bold">${a.occupancy_pct}%</td>
+                    <td class="py-3 px-6">
+                      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${a.available_seats === 0 ? 'bg-rose-100 text-rose-700 border border-rose-200' : ((a.occupancy_pct > 40) ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200')}">
+                        <span class="w-2 h-2 rounded-full ${a.available_seats === 0 ? 'bg-rose-500' : ((a.occupancy_pct > 40) ? 'bg-amber-400' : 'bg-emerald-500')}"></span>
+                        ${a.availability_label || (a.available_seats === 0 ? 'Full' : (a.occupancy_pct > 40 ? 'Filling Fast' : 'Available'))}
+                      </span>
+                    </td>
                   </tr>
                 `).join('')}
               </tbody>

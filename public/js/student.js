@@ -36,7 +36,7 @@ async function initStudentPortal() {
   STATE.liveInterval = setInterval(refreshStudentLiveSeats, 3500);
 }
 
-// Background poller that updates seat counts live without disrupting student clicks
+// Background poller that updates availability status live without disrupting student clicks
 async function refreshStudentLiveSeats() {
   if (!STATE.student || STATE.activeStudentTab !== 'subjects') return;
   try {
@@ -52,29 +52,22 @@ async function refreshStudentLiveSeats() {
       : null;
 
     if (mapRes && mapRes.mappings) {
+      const previousStatuses = new Map(STUDENT_MAPPINGS.map(m => [m.id, m.availability_status]));
       STUDENT_MAPPINGS = mapRes.mappings;
       let needsRerender = false;
 
       STUDENT_MAPPINGS.forEach(m => {
-        const isFull = m.available_seats <= 0;
+        const isFull = m.availability_status === 'FULL';
         const hasConfirmed = STUDENT_SELECTIONS.some(s => s.mapping_id === m.id && s.status === 'CONFIRMED');
+        if (previousStatuses.get(m.id) !== m.availability_status) {
+          needsRerender = true;
+        }
 
         // If seats filled while student had it marked as pending, auto-clear and prompt to select another
         if (isFull && !hasConfirmed && PENDING_SELECTIONS[m.subject_id] === m.id) {
           delete PENDING_SELECTIONS[m.subject_id];
           needsRerender = true;
           showToast(`Seat capacity for ${m.faculty_name} just filled up! Please select an available faculty.`, 'warning');
-        }
-
-        const badge = document.getElementById(`seat-badge-${m.id}`);
-        if (badge) {
-          if (isFull && !hasConfirmed) {
-            badge.className = 'text-[11px] font-black px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 inline-block';
-            badge.textContent = 'SEATS FULL';
-          } else {
-            badge.className = 'text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
-            badge.textContent = `${m.available_seats} / ${m.capacity} seats left`;
-          }
         }
       });
 
@@ -96,7 +89,7 @@ async function refreshStudentLiveSeats() {
       }
     }
   } catch (e) {
-    // Silent background handling
+    console.error('Failed to refresh student faculty availability:', e);
   }
 }
 
@@ -182,8 +175,6 @@ function submitSubjectSelection(subjectId) {
     mapping.faculty_name,
     subject.name,
     subject.code,
-    mapping.available_seats,
-    mapping.capacity
   );
 }
 
@@ -239,6 +230,13 @@ function renderStudentSubjects() {
         </div>
       </div>
 
+      <div class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs" aria-label="Faculty availability legend">
+        <span class="font-bold text-slate-700">Faculty availability:</span>
+        <span class="inline-flex items-center gap-2 text-emerald-800"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500" aria-hidden="true"></span>Available</span>
+        <span class="inline-flex items-center gap-2 text-amber-800"><span class="w-2.5 h-2.5 rounded-full bg-amber-400" aria-hidden="true"></span>Filling Fast</span>
+        <span class="inline-flex items-center gap-2 text-rose-800"><span class="w-2.5 h-2.5 rounded-full bg-rose-500" aria-hidden="true"></span>Full</span>
+      </div>
+
       <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
         <div>
           Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; <span class="px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">${STATE.student.section === 'Group 1' ? 'Group 1 (Group A: 501–5E2)' : (STATE.student.section === 'Group 2' ? 'Group 2 (Group B: 5E3–5KP)' : STATE.student.section)}</span>
@@ -278,6 +276,37 @@ function renderStudentSubjects() {
           <strong>Instructions:</strong> Mark only one oval for each subject below and click <strong>Confirm Selection</strong>. Seats are allocated strictly on a First-Come, First-Served basis and reservations are permanent once confirmed.
         </div>
       </div>
+
+      <!-- 3-Color Availability Legend -->
+      <div class="p-4 bg-white border border-slate-200 rounded-xl shadow-sm text-xs space-y-2">
+        <div class="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+          <i class="fa-solid fa-palette text-blue-600"></i>
+          <span>Faculty Availability Status Legend:</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+          <div class="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold">
+            <span class="w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0"></span>
+            <div>
+              <div class="text-xs font-bold text-emerald-900">Green · Available</div>
+              <div class="text-[10px] text-emerald-700 font-normal">1–40% capacity occupied</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-semibold">
+            <span class="w-3 h-3 rounded-full bg-amber-500 animate-pulse flex-shrink-0"></span>
+            <div>
+              <div class="text-xs font-bold text-amber-900">Yellow · Filling Fast</div>
+              <div class="text-[10px] text-amber-700 font-normal">&gt;40% and &lt;100% occupied</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 font-semibold">
+            <span class="w-3 h-3 rounded-full bg-rose-500 flex-shrink-0"></span>
+            <div>
+              <div class="text-xs font-bold text-rose-900">Red · Full</div>
+              <div class="text-[10px] text-rose-700 font-normal">Faculty Capacity Reached</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -292,7 +321,7 @@ function renderStudentSubjects() {
     const subjectMappings = STUDENT_MAPPINGS.filter(m => m.subject_id === subject.id && m.status === 'ACTIVE');
 
     // Check if any mappings in this subject are full
-    const hasFullFaculty = subjectMappings.some(m => m.available_seats <= 0);
+    const hasFullFaculty = subjectMappings.some(m => m.availability_status === 'FULL');
 
     return `
       <div id="subject-card-${subject.id}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : (hasFullFaculty && !PENDING_SELECTIONS[subject.id] ? 'border-amber-300 ring-2 ring-amber-400/20' : 'border-slate-200')} shadow-sm p-6 space-y-4 transition-all">
@@ -332,8 +361,10 @@ function renderStudentSubjects() {
             </div>
           ` : subjectMappings.map(m => {
       const isConfirmedForThis = hasSelection && confirmedSelection.mapping_id === m.id;
-      // It is full if available_seats <= 0 and student has NOT confirmed it
-      const isFull = (m.available_seats <= 0) && !isConfirmedForThis;
+      // The selected faculty is unavailable for new students once marked Full.
+      const isFull = (m.availability_status === 'FULL' || m.is_full) && !isConfirmedForThis;
+      const isFillingFast = m.availability_status === 'FILLING_FAST';
+      const isAvailable = !isFull && !isFillingFast;
 
       // Auto-clear from pending if it became full
       if (isFull && PENDING_SELECTIONS[subject.id] === m.id) {
@@ -365,8 +396,13 @@ function renderStudentSubjects() {
 
                   <!-- Faculty Name & Alias -->
                   <div class="min-w-0">
-                    <div class="text-sm font-bold ${isFull ? 'text-slate-500 line-through' : 'text-slate-900'} truncate">
-                      ${alias ? `<span class="capitalize text-indigo-900">${alias}</span> <span class="text-slate-500 font-normal text-xs">(${m.faculty_name})</span>` : m.faculty_name}
+                    <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
+                      <span>${alias ? `<span class="capitalize text-indigo-900">${alias}</span> <span class="text-slate-500 font-normal text-xs">(${m.faculty_name})</span>` : m.faculty_name}</span>
+                      <span class="w-2.5 h-2.5 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')} flex-shrink-0"></span>
+                    </div>
+                    <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
+                      <span class="w-2 h-2 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')}"></span>
+                      <span>${isFull ? 'Full (Faculty Capacity Reached)' : (isFillingFast ? 'Filling Fast' : 'Available')}</span>
                     </div>
                     <div class="text-[11px] text-slate-500 truncate mt-0.5">
                       ${m.faculty_designation} &bull; ${m.faculty_qualification}
@@ -378,19 +414,28 @@ function renderStudentSubjects() {
                 <div class="flex items-center gap-2 flex-shrink-0 pl-2">
                   ${isFull ? `
                     <div class="text-right">
-                      <span id="seat-badge-${m.id}" class="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 inline-block">
-                        SEATS FULL
+                      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-700 border border-rose-300">
+                        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                        <span>Faculty Capacity Reached</span>
                       </span>
-                      <div class="text-[10px] text-rose-600 font-bold mt-0.5">Capacity reached</div>
+                    </div>
+                  ` : (isFillingFast ? `
+                    <div class="text-right">
+                      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                        <span>Filling Fast</span>
+                      </span>
+                      ${!hasSelection && !isSelected ? `<div class="text-[10px] text-amber-700 font-semibold mt-0.5">High Demand</div>` : ''}
                     </div>
                   ` : `
                     <div class="text-right">
-                      <span id="seat-badge-${m.id}" class="text-[11px] font-bold px-2.5 py-0.5 rounded-full ${isSelected && hasSelection ? 'bg-emerald-100 text-emerald-800' : (isSelected ? 'bg-indigo-100 text-indigo-800 border border-indigo-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')}">
-                        ${m.available_seats} / ${m.capacity} seats left
+                      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        <span>Available</span>
                       </span>
-                      ${!hasSelection && !isSelected ? `<div class="text-[10px] text-indigo-600 font-semibold mt-0.5">Click to choose</div>` : ''}
+                      ${!hasSelection && !isSelected ? `<div class="text-[10px] text-emerald-700 font-semibold mt-0.5">Click to choose</div>` : ''}
                     </div>
-                  `}
+                  `)}
                 </div>
               </div>
             `;
@@ -679,8 +724,9 @@ async function openFacultySelectionModal(subjectId) {
     }
 
     const cardsHtml = mappings.map(m => {
-      const isFull = m.available_seats <= 0;
-      const fillPercentage = m.capacity > 0 ? Math.min(100, Math.round(((m.capacity - m.available_seats) / m.capacity) * 100)) : 100;
+      const isFull = m.availability_status === 'FULL';
+      const availabilityColor = isFull ? 'bg-rose-500' : (m.availability_status === 'FILLING_FAST' ? 'bg-amber-400' : 'bg-emerald-500');
+      const availabilityTextColor = isFull ? 'text-rose-700' : (m.availability_status === 'FILLING_FAST' ? 'text-amber-700' : 'text-emerald-700');
 
       return `
         <div class="border ${isFull ? 'border-slate-200 bg-slate-50 opacity-80' : 'border-slate-200 bg-white hover:border-blue-400'} rounded-2xl p-5 transition-all">
@@ -697,28 +743,21 @@ async function openFacultySelectionModal(subjectId) {
               <div class="text-xs text-slate-500 mt-1"><strong class="text-slate-700">Specialization:</strong> ${m.specialization}</div>
               ${m.description ? `<p class="text-xs text-slate-600 mt-1 line-clamp-2">${m.description}</p>` : ''}
               
-              <!-- Seat Capacity Meter -->
-              <div class="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <div class="flex items-center justify-between text-xs mb-1.5">
-                  <span class="font-medium text-slate-600">Seat Occupancy:</span>
-                  <span class="font-bold ${isFull ? 'text-rose-600' : 'text-slate-900'}">
-                    ${isFull ? 'FULL' : `${m.available_seats} of ${m.capacity} seats remaining`}
-                  </span>
-                </div>
-                <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                  <div class="h-2 rounded-full transition-all duration-500 ${isFull ? 'bg-rose-500' : fillPercentage > 80 ? 'bg-amber-500' : 'bg-blue-600'}" style="width: ${fillPercentage}%"></div>
-                </div>
+              <div class="mt-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold ${availabilityTextColor}" aria-label="Faculty availability: ${m.availability_label}">
+                <span class="w-2.5 h-2.5 rounded-full ${availabilityColor}" aria-hidden="true"></span>
+                <span>${m.availability_label}</span>
+                ${isFull ? '<span>· Faculty Capacity Reached</span>' : ''}
               </div>
 
               <!-- Selection Button -->
               <div class="mt-4 flex justify-end">
                 ${isFull ? `
-                  <button disabled class="px-4 py-2 bg-slate-200 text-slate-400 font-bold rounded-xl text-xs cursor-not-allowed flex items-center gap-1.5">
+                  <button type="button" disabled aria-disabled="true" class="px-4 py-2 bg-slate-200 text-slate-400 font-bold rounded-xl text-xs cursor-not-allowed flex items-center gap-1.5">
                     <i class="fa-solid fa-ban"></i>
-                    <span>Seats Fully Booked</span>
+                    <span>Faculty Capacity Reached</span>
                   </button>
                 ` : `
-                  <button onclick="confirmFacultyReservation(${m.mapping_id}, '${escapeQuote(m.faculty_name)}', '${escapeQuote(subject.name)}', '${escapeQuote(subject.code)}', ${m.available_seats}, ${m.capacity})" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/25 transition-all flex items-center gap-2">
+                  <button onclick="confirmFacultyReservation(${m.mapping_id}, '${escapeQuote(m.faculty_name)}', '${escapeQuote(subject.name)}', '${escapeQuote(subject.code)}')" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/25 transition-all flex items-center gap-2">
                     <i class="fa-solid fa-check"></i>
                     <span>Select This Faculty</span>
                   </button>
@@ -759,7 +798,7 @@ async function openFacultySelectionModal(subjectId) {
 }
 
 // Confirmation Dialog before executing atomic server reservation
-function confirmFacultyReservation(mappingId, facultyName, subjectName, subjectCode, availableSeats, capacity) {
+function confirmFacultyReservation(mappingId, facultyName, subjectName, subjectCode) {
   openModal({
     title: 'Confirm Faculty Selection',
     maxWidth: 'max-w-md',
@@ -781,10 +820,6 @@ function confirmFacultyReservation(mappingId, facultyName, subjectName, subjectC
           <div>
             <span class="text-slate-500">Selected Faculty:</span>
             <div class="font-bold text-blue-600">${facultyName}</div>
-          </div>
-          <div>
-            <span class="text-slate-500">Current Remaining Seats:</span>
-            <div class="font-bold text-slate-900">${availableSeats} / ${capacity}</div>
           </div>
         </div>
 
@@ -859,14 +894,76 @@ function renderStudentSelections() {
   }
 
   container.innerHTML = `
-    <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-      <div>
-        <h4 class="text-base font-bold text-slate-900">Official Course & Faculty Registration Slip</h4>
-        <p class="text-xs text-slate-500">Student: <strong>${STATE.student.name}</strong> (${STATE.student.reg_no}) &bull; Year ${STATE.student.academic_year}, Sem ${STATE.student.semester}, Sec ${STATE.student.section}</p>
+    <div id="master-registration-slip" class="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
+      <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h4 class="text-base font-bold text-slate-900">Official Course & Faculty Registration Slip</h4>
+          <p class="text-xs text-slate-500">Student: <strong>${STATE.student.name}</strong> (${STATE.student.reg_no}) &bull; Year ${STATE.student.academic_year}, Sem ${STATE.student.semester}, Sec ${STATE.student.section}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="downloadMasterSlipScreenshot()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition">
+            <i class="fa-solid fa-download"></i>
+            <span>Download Complete Slip</span>
+          </button>
+          <div class="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+            <i class="fa-solid fa-check-circle mr-1"></i> ${confirmed.length} Course(s) Confirmed
+          </div>
+        </div>
       </div>
-      <div class="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 self-start sm:self-auto">
-        <i class="fa-solid fa-check-circle mr-1"></i> ${confirmed.length} Course(s) Confirmed
-      </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 p-5 sm:p-6 bg-slate-50/60">
+      ${confirmed.map(s => `
+        <section class="space-y-3">
+          <article id="selection-confirmation-${s.id}" class="selection-confirmation-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 p-5 text-white">
+              <div class="flex items-center gap-3">
+                <img src="/college_logo.jpg" alt="RGMCET logo" class="h-12 w-12 rounded-lg bg-white object-contain p-1">
+                <div class="min-w-0">
+                  <div class="text-[11px] font-black uppercase tracking-wide">Rajeev Gandhi Memorial College of Engineering &amp; Technology</div>
+                  <div class="mt-1 text-[10px] font-semibold text-blue-200">Department of Computer Science and Engineering</div>
+                </div>
+                <img src="/cse_logo.png" alt="Department of CSE logo" class="ml-auto hidden h-12 w-12 rounded-lg bg-white object-contain p-1 sm:block">
+              </div>
+              <h4 class="mt-5 text-base font-black uppercase tracking-wider">Faculty Selection Confirmation</h4>
+            </div>
+            <div class="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Registration Number</div>
+                <div class="mono-font mt-1 break-words text-sm font-bold text-slate-900">${STATE.student.reg_no}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Student Name</div>
+                <div class="mt-1 break-words text-sm font-bold text-slate-900">${STATE.student.name}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Selected Subject</div>
+                <div class="mt-1 break-words text-sm font-bold text-slate-900">${s.subject_name}</div>
+                <div class="mono-font mt-0.5 text-[11px] text-slate-500">${s.subject_code}</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Selected Faculty</div>
+                <div class="mt-1 break-words text-sm font-bold text-slate-900">${s.faculty_name}</div>
+              </div>
+              <div class="rounded-xl bg-emerald-50 p-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Selection Status</div>
+                <div class="mt-1 inline-flex items-center gap-2 text-sm font-black text-emerald-800">
+                  <span class="h-2.5 w-2.5 rounded-full bg-emerald-500" aria-hidden="true"></span>Confirmed
+                </div>
+              </div>
+              <div class="rounded-xl bg-slate-50 p-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Selection Date &amp; Time</div>
+                <div class="mt-1 break-words text-sm font-bold text-slate-900">${new Date(s.reserved_at).toLocaleString()}</div>
+              </div>
+            </div>
+          </article>
+          <div class="flex justify-end no-print">
+            <button onclick="downloadSelectionScreenshot(${s.id})" class="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-800">
+              <i class="fa-solid fa-download" aria-hidden="true"></i>
+              <span>Download Screenshot</span>
+            </button>
+          </div>
+        </section>
+      `).join('')}
     </div>
 
     <div class="overflow-x-auto">
@@ -919,7 +1016,203 @@ function renderStudentSelections() {
         System Verification ID: ${STATE.student.reg_no}-${Date.now().toString(36).toUpperCase()}
       </div>
     </div>
+    </div>
   `;
+}
+
+async function downloadMasterSlipScreenshot() {
+  const slipEl = document.getElementById('master-registration-slip');
+  if (!slipEl || !STATE.student) {
+    showToast('Registration slip element not found.', 'error');
+    return;
+  }
+  const safeName = `${STATE.student.reg_no}-registration-slip`.replace(/[^a-z0-9_-]/gi, '-');
+  try {
+    if (typeof html2canvas === 'function') {
+      const canvas = await html2canvas(slipEl, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (blob) {
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `${safeName}.png`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        showToast('Registration slip screenshot downloaded successfully!', 'success');
+        return;
+      }
+    }
+    window.print();
+  } catch (err) {
+    console.error('Failed to capture master slip:', err);
+    window.print();
+  }
+}
+
+async function downloadSelectionScreenshot(selectionId) {
+  try {
+    const selection = STUDENT_SELECTIONS.find(s => s.id === selectionId && s.status === 'CONFIRMED');
+    if (!selection || !STATE.student) {
+      throw new Error('The confirmed selection could not be found.');
+    }
+
+    const cardEl = document.getElementById(`selection-confirmation-${selectionId}`);
+    const safeName = `${STATE.student.reg_no}-${selection.subject_code}-confirmation`.replace(/[^a-z0-9_-]/gi, '-');
+
+    // 1. Try html2canvas DOM capture first (high-resolution capture of exact card element)
+    if (typeof html2canvas === 'function' && cardEl) {
+      try {
+        const capturedCanvas = await html2canvas(cardEl, {
+          scale: 2.5,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff'
+        });
+        const blob = await new Promise(resolve => capturedCanvas.toBlob(resolve, 'image/png'));
+        if (blob) {
+          const objectUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = objectUrl;
+          link.download = `${safeName}.png`;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+          showToast('Confirmation screenshot downloaded successfully!', 'success');
+          return;
+        }
+      } catch (domErr) {
+        console.warn('html2canvas capture fallback to 2D canvas engine:', domErr);
+      }
+    }
+
+    // 2. High-resolution standalone 2D canvas fallback
+    const [collegeLogo, departmentLogo] = await Promise.all([
+      loadScreenshotImage('/college_logo.jpg'),
+      loadScreenshotImage('/cse_logo.png')
+    ]);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1600;
+    canvas.height = 1260;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('PNG image generation is not supported by this browser.');
+
+    context.fillStyle = '#f1f5f9';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    drawScreenshotRoundedRect(context, 56, 48, 1488, 1164, 34, '#ffffff');
+    context.strokeStyle = '#dbe3ee';
+    context.lineWidth = 2;
+    context.stroke();
+
+    context.save();
+    context.beginPath();
+    context.roundRect(56, 48, 1488, 292, 34);
+    context.clip();
+    const headerGradient = context.createLinearGradient(56, 48, 1544, 340);
+    headerGradient.addColorStop(0, '#0f172a');
+    headerGradient.addColorStop(0.5, '#172554');
+    headerGradient.addColorStop(1, '#0f172a');
+    context.fillStyle = headerGradient;
+    context.fillRect(56, 48, 1488, 292);
+    context.restore();
+
+    drawScreenshotRoundedRect(context, 104, 100, 144, 144, 18, '#ffffff');
+    drawScreenshotRoundedRect(context, 1352, 100, 144, 144, 18, '#ffffff');
+    context.drawImage(collegeLogo, 118, 114, 116, 116);
+    context.drawImage(departmentLogo, 1366, 114, 116, 116);
+
+    context.textAlign = 'center';
+    context.fillStyle = '#ffffff';
+    context.font = '800 25px Arial, sans-serif';
+    context.fillText('RAJEEV GANDHI MEMORIAL COLLEGE OF', 800, 124);
+    context.fillText('ENGINEERING & TECHNOLOGY', 800, 160);
+    context.fillStyle = '#bfdbfe';
+    context.font = '600 19px Arial, sans-serif';
+    context.fillText('Department of Computer Science and Engineering', 800, 198);
+    context.fillStyle = '#ffffff';
+    context.font = '800 27px Arial, sans-serif';
+    context.fillText('FACULTY SELECTION CONFIRMATION', 800, 278);
+
+    const dateTime = new Date(selection.reserved_at).toLocaleString();
+    const fields = [
+      { label: 'REGISTRATION NUMBER', value: STATE.student.reg_no, x: 112, y: 402 },
+      { label: 'STUDENT NAME', value: STATE.student.name, x: 832, y: 402 },
+      { label: 'SELECTED SUBJECT', value: `${selection.subject_name} (${selection.subject_code})`, x: 112, y: 584 },
+      { label: 'SELECTED FACULTY', value: selection.faculty_name, x: 832, y: 584 },
+      { label: 'SELECTION STATUS', value: 'CONFIRMED', x: 112, y: 766, confirmed: true },
+      { label: 'SELECTION DATE & TIME', value: dateTime, x: 832, y: 766 }
+    ];
+
+    fields.forEach(field => {
+      drawScreenshotRoundedRect(context, field.x, field.y, 656, 142, 18, field.confirmed ? '#ecfdf5' : '#f8fafc');
+      context.textAlign = 'left';
+      context.fillStyle = field.confirmed ? '#047857' : '#64748b';
+      context.font = '700 17px Arial, sans-serif';
+      context.fillText(field.label, field.x + 26, field.y + 42);
+      context.fillStyle = field.confirmed ? '#065f46' : '#0f172a';
+      context.font = '700 25px Arial, sans-serif';
+      drawScreenshotWrappedText(context, field.value, field.x + 26, field.y + 88, 600, 32);
+    });
+
+    context.fillStyle = '#64748b';
+    context.textAlign = 'center';
+    context.font = '500 16px Arial, sans-serif';
+    context.fillText('Official selection confirmation • RGMCET', 800, 1064);
+
+    const png = await new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('The confirmation image could not be generated.'));
+      }, 'image/png');
+    });
+    const objectUrl = URL.createObjectURL(png);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `${safeName}.png`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch (error) {
+    console.error('Failed to generate selection confirmation screenshot:', error);
+    showToast(error.message || 'Could not download the selection screenshot.', 'error');
+  }
+}
+
+function loadScreenshotImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('College branding image could not be loaded.'));
+    image.src = src;
+  });
+}
+
+function drawScreenshotRoundedRect(context, x, y, width, height, radius, fill) {
+  context.beginPath();
+  context.roundRect(x, y, width, height, radius);
+  context.fillStyle = fill;
+  context.fill();
+}
+
+function drawScreenshotWrappedText(context, value, x, y, maxWidth, lineHeight) {
+  const words = String(value).split(/\s+/);
+  let line = '';
+  let lineY = y;
+
+  words.forEach(word => {
+    const nextLine = line ? `${line} ${word}` : word;
+    if (context.measureText(nextLine).width > maxWidth && line) {
+      context.fillText(line, x, lineY);
+      line = word;
+      lineY += lineHeight;
+    } else {
+      line = nextLine;
+    }
+  });
+  if (line) context.fillText(line, x, lineY);
 }
 
 function escapeQuote(str) {

@@ -60,6 +60,8 @@ The application strictly enforces **two user roles**:
   - One faculty member per subject per selection round.
   - Students cannot modify or cancel confirmed selections themselves.
   - Instant live feedback when seats are fully booked.
+- Faculty availability is shown to students only as accessible green/yellow/red status indicators; exact capacity and allocation metrics remain admin-only.
+- Each confirmed selection has a branded confirmation card that can be downloaded as a PNG generated in the browser.
 
 ### 4. Administrator Live Selections & Cancellation Authority
 - Real-time live monitor of all course allocations.
