@@ -235,6 +235,37 @@ router.post('/reserve', (req, res) => {
     }
 
     const result = withTransaction(() => {
+      // 0. Live Selection Round Validation (Synchronized with main server round)
+      const currentRound = db.prepare(`
+        SELECT id, name, status, target_group
+        FROM selection_rounds
+        WHERE academic_year = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(student.academic_year, student.section);
+
+      const groupLabel = student.section === 'Group 1' ? 'Group 1 (Group A)' : (student.section === 'Group 2' ? 'Group 2 (Group B)' : (student.section || 'Your Cohort'));
+
+      if (!currentRound) {
+        throw new Error(`No live selection round has been configured for your cohort (${groupLabel}). Please contact administration.`);
+      }
+
+      if (currentRound.status === 'DRAFT') {
+        throw new Error(`Live selection for ${groupLabel} has not been started yet. Please wait for the administrator to start live selection.`);
+      }
+
+      if (currentRound.status === 'PAUSED') {
+        throw new Error(`Live selection for ${groupLabel} is currently PAUSED by the administrator.`);
+      }
+
+      if (currentRound.status === 'CLOSED') {
+        throw new Error(`Live selection round "${currentRound.name}" is CLOSED.`);
+      }
+
+      if (currentRound.status !== 'ACTIVE') {
+        throw new Error(`Live selection round is currently not active (${currentRound.status}).`);
+      }
+
       // 1. Verify Elective
       const elective = db.prepare('SELECT * FROM open_electives WHERE id = ?').get(elective_id);
       if (!elective) throw new Error('Selected open elective not found.');
@@ -334,6 +365,37 @@ router.post('/reserve-batch', (req, res) => {
     }
 
     const results = withTransaction(() => {
+      // 0. Live Selection Round Validation (Synchronized with main server round)
+      const currentRound = db.prepare(`
+        SELECT id, name, status, target_group
+        FROM selection_rounds
+        WHERE academic_year = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(student.academic_year, student.section);
+
+      const groupLabel = student.section === 'Group 1' ? 'Group 1 (Group A)' : (student.section === 'Group 2' ? 'Group 2 (Group B)' : (student.section || 'Your Cohort'));
+
+      if (!currentRound) {
+        throw new Error(`No live selection round has been configured for your cohort (${groupLabel}). Please contact administration.`);
+      }
+
+      if (currentRound.status === 'DRAFT') {
+        throw new Error(`Live selection for ${groupLabel} has not been started yet. Please wait for the administrator to start live selection.`);
+      }
+
+      if (currentRound.status === 'PAUSED') {
+        throw new Error(`Live selection for ${groupLabel} is currently PAUSED by the administrator.`);
+      }
+
+      if (currentRound.status === 'CLOSED') {
+        throw new Error(`Live selection round "${currentRound.name}" is CLOSED.`);
+      }
+
+      if (currentRound.status !== 'ACTIVE') {
+        throw new Error(`Live selection round is currently not active (${currentRound.status}).`);
+      }
+
       const confirmedList = [];
 
       for (const sel of selections) {

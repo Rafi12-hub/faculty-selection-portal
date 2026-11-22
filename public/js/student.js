@@ -565,7 +565,7 @@ function renderStudentSubjects() {
                   }
 
                   return `
-                    <div onclick="${!isFull ? `selectOEFaculty(${elective.id}, ${fa.assignment_id})` : ''}" class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25' : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm')}">
+                    <div onclick="${(isLiveActive && !isFull) ? `selectOEFaculty(${elective.id}, ${fa.assignment_id})` : ''}" class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25' : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))}">
                       <div class="flex items-center gap-3.5 min-w-0">
                         <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
                           ${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
@@ -598,21 +598,32 @@ function renderStudentSubjects() {
             </div>
 
             <!-- Step 3: Confirm Card Footer -->
-            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <div class="text-xs text-slate-500">
-                ${pending.assignmentId 
-                  ? '<span class="text-indigo-700 font-bold"><i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> Faculty selected. Ready to confirm.</span>'
-                  : 'Choose a faculty above to lock this elective.'}
-              </div>
-              <button 
-                ${!pending.assignmentId ? 'disabled' : ''}
-                onclick="confirmOESelection(${elective.id})"
-                class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${pending.assignmentId 
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 cursor-pointer' 
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
-                <i class="fa-solid fa-lock"></i>
-                <span>Confirm ${elective.name}</span>
-              </button>
+            <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              ${!isLiveActive ? `
+                <div class="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+                  <i class="fa-solid fa-lock text-amber-600"></i>
+                  <span>Waiting for administrator to start live selection.</span>
+                </div>
+                <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 flex items-center gap-2">
+                  <i class="fa-solid fa-lock"></i>
+                  <span>Selection Locked</span>
+                </button>
+              ` : `
+                <div class="text-xs text-slate-500">
+                  ${pending.assignmentId 
+                    ? '<span class="text-indigo-700 font-bold"><i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> Faculty selected. Ready to confirm.</span>'
+                    : 'Choose a faculty above to lock this elective.'}
+                </div>
+                <button 
+                  ${!pending.assignmentId ? 'disabled' : ''}
+                  onclick="confirmOESelection(${elective.id})"
+                  class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${pending.assignmentId 
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 cursor-pointer' 
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
+                  <i class="fa-solid fa-lock"></i>
+                  <span>Confirm ${elective.name}</span>
+                </button>
+              `}
             </div>
           `}
         </div>
@@ -1928,6 +1939,11 @@ function selectOEFaculty(electiveId, assignmentId) {
 }
 
 async function confirmOESelection(electiveId) {
+  if (!ACTIVE_ROUND || ACTIVE_ROUND.status !== 'ACTIVE') {
+    showToast('Live selection has not been started yet. Please wait for the administrator to start live selection.', 'warning');
+    return;
+  }
+
   const pending = PENDING_OE_SELECTIONS[electiveId];
   if (!pending || !pending.subjectId || !pending.assignmentId) {
     showToast('Please select both a subject and an available faculty first.', 'warning');
@@ -1953,6 +1969,11 @@ async function confirmOESelection(electiveId) {
 }
 
 async function confirmAllOESelectionsBatch() {
+  if (!ACTIVE_ROUND || ACTIVE_ROUND.status !== 'ACTIVE') {
+    showToast('Live selection has not been started yet. Please wait for the administrator to start live selection.', 'warning');
+    return;
+  }
+
   const electives = STUDENT_OE_DATA || [];
   const myData = STUDENT_OE_MY || { registrations: [] };
   const registrations = myData.registrations || [];
