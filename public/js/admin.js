@@ -41,16 +41,12 @@ function switchAdminTab(tabName) {
   switch (tabName) {
     case 'dashboard': loadAdminDashboard(); break;
     case 'open-electives': 
-      ADMIN_DATA.mappingMode = 'oe';
-      loadAdminMappings();
+    case 'mappings': 
+      loadAdminMappings(); 
       break;
     case 'students': loadAdminStudents(); break;
     case 'faculty': loadAdminFaculty(); break;
     case 'subjects': loadAdminSubjects(); break;
-    case 'mappings': 
-      ADMIN_DATA.mappingMode = 'core';
-      loadAdminMappings(); 
-      break;
     case 'rounds': loadAdminRounds(); break;
     case 'live': loadAdminLiveSelections(); break;
     case 'reports': loadAdminReports(); break;
@@ -908,26 +904,23 @@ async function deleteSubjectRecord(id, name) {
 // =========================================================================
 // 4. FACULTY–SUBJECT MAPPING (Requirement 3: Separate section, independent capacities)
 // =========================================================================
-async function loadAdminMappings(mode = (ADMIN_DATA.mappingMode || 'core')) {
-  ADMIN_DATA.mappingMode = mode;
+// 5. FACULTY - SUBJECT MAPPINGS (Unified for Core & Open Electives)
+// =========================================================================
+async function loadAdminMappings() {
   const container = document.getElementById('admin-tab-content');
   if (!container) return;
   container.innerHTML = `<div class="py-16 text-center text-slate-400"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-blue-600"></i><div class="mt-2 text-xs font-semibold text-slate-600">Loading Faculty–Subject Mappings...</div></div>`;
 
   try {
-    const [mapRes, facRes, subRes, oeRes, repRes] = await Promise.all([
+    const [mapRes, facRes, subRes] = await Promise.all([
       api.get('/api/mappings'),
       (ADMIN_DATA.faculty && ADMIN_DATA.faculty.length > 0) ? Promise.resolve({ faculty: ADMIN_DATA.faculty }) : api.get('/api/faculty'),
-      api.get('/api/subjects'),
-      api.get('/api/open-electives'),
-      api.get('/api/open-electives/reports')
+      api.get('/api/subjects')
     ]);
 
     ADMIN_DATA.mappings = mapRes ? mapRes.mappings : [];
     ADMIN_DATA.faculty = (facRes && facRes.faculty) ? facRes.faculty : (ADMIN_DATA.faculty || []);
     ADMIN_DATA.subjects = subRes ? subRes.subjects : [];
-    ADMIN_DATA.openElectives = (oeRes && oeRes.success) ? oeRes.electives : [];
-    ADMIN_DATA.oeReports = (repRes && repRes.success) ? repRes : { stats: {}, registrations: [], faculty_allocations: [], subject_allocations: [], incomplete_students: [] };
 
     renderMappingsList();
   } catch (err) {
@@ -935,82 +928,12 @@ async function loadAdminMappings(mode = (ADMIN_DATA.mappingMode || 'core')) {
   }
 }
 
-function switchMappingMode(mode) {
-  ADMIN_DATA.mappingMode = mode;
-  // Sync the top navigation bar highlighting
-  const navButtons = document.querySelectorAll('#admin-nav-bar button');
-  navButtons.forEach(btn => {
-    btn.className = 'px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 text-slate-600 hover:bg-slate-100';
-  });
-  const activeTabId = mode === 'oe' ? 'adm-nav-open-electives' : 'adm-nav-mappings';
-  const activeBtn = document.getElementById(activeTabId);
-  if (activeBtn) {
-    activeBtn.className = 'px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 bg-blue-600 text-white shadow-sm';
-  }
-  renderMappingsList();
-}
-window.switchMappingMode = switchMappingMode;
-
 function renderMappingsList() {
   const container = document.getElementById('admin-tab-content');
   if (!container) return;
 
-  const mappingMode = ADMIN_DATA.mappingMode || 'core';
   const mappings = ADMIN_DATA.mappings || [];
   const subjects = ADMIN_DATA.subjects || [];
-  const openElectives = ADMIN_DATA.openElectives || [];
-
-  // Calculate OE totals
-  let oeTotalAssignments = 0;
-  openElectives.forEach(e => {
-    (e.subjects || []).forEach(s => {
-      oeTotalAssignments += (s.faculty_assignments || []).length;
-    });
-  });
-
-  // Top Mode Switcher Bar (Faculty-Subject Mapping Hub)
-  const modeSwitcherHtml = `
-    <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
-      <div class="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
-        <button onclick="switchMappingMode('core')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${mappingMode === 'core' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
-          <i class="fa-solid fa-diagram-project text-blue-600"></i>
-          <span>Core Subject Mappings</span>
-          <span class="px-2 py-0.5 rounded-full text-[10px] ${mappingMode === 'core' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-600'}">${mappings.length}</span>
-        </button>
-        <button onclick="switchMappingMode('oe')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${mappingMode === 'oe' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
-          <i class="fa-solid fa-shapes text-indigo-600"></i>
-          <span>Open Elective Mappings (OE-I &amp; OE-II)</span>
-          <span class="px-2 py-0.5 rounded-full text-[10px] ${mappingMode === 'oe' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200 text-slate-600'}">${oeTotalAssignments}</span>
-        </button>
-      </div>
-
-      <div class="flex items-center gap-2 flex-wrap">
-        ${mappingMode === 'core' ? `
-          <button onclick="openAddMappingModal()" class="py-2 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all">
-            <i class="fa-solid fa-plus"></i>
-            <span>Map Subject to N Faculties</span>
-          </button>
-        ` : `
-          <button onclick="openAddOESubjectModal()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all">
-            <i class="fa-solid fa-plus"></i>
-            <span>Add OE Subject</span>
-          </button>
-          <button onclick="openAssignOEFacultyModal()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all">
-            <i class="fa-solid fa-user-plus"></i>
-            <span>Assign OE Faculty</span>
-          </button>
-        `}
-        <button onclick="loadAdminMappings('${mappingMode}')" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all" title="Refresh Mappings">
-          <i class="fa-solid fa-rotate text-xs"></i>
-        </button>
-      </div>
-    </div>
-  `;
-
-  if (mappingMode === 'oe') {
-    container.innerHTML = `<div class="space-y-6">${modeSwitcherHtml}<div id="oe-mappings-mount">${renderAdminOpenElectivesHTML()}</div></div>`;
-    return;
-  }
 
   // Group mappings by subject
   const subjectMap = {};
@@ -1024,21 +947,26 @@ function renderMappingsList() {
   mappings.forEach(m => {
     if (!subjectMap[m.subject_id]) {
       subjectMap[m.subject_id] = {
-        subject: { id: m.subject_id, code: m.subject_code, name: m.subject_name, academic_year: m.academic_year, semester: m.semester },
+        subject: { id: m.subject_id, code: m.subject_code, name: m.subject_name, academic_year: m.academic_year, semester: m.semester, elective_group: m.elective_group },
         mappings: []
       };
     }
     subjectMap[m.subject_id].mappings.push(m);
   });
 
-  ADMIN_DATA.mappingYearFilter = ADMIN_DATA.mappingYearFilter || 'ALL';
-  const yearFilter = ADMIN_DATA.mappingYearFilter;
+  ADMIN_DATA.mappingFilter = ADMIN_DATA.mappingFilter || 'ALL';
+  const filter = ADMIN_DATA.mappingFilter;
 
   const subjectGroups = Object.values(subjectMap).filter(g => {
-    if (yearFilter === '2') return g.subject && g.subject.academic_year === 2;
-    if (yearFilter === '3') return g.subject && g.subject.academic_year === 3;
+    if (!g.subject) return false;
+    if (filter === 'CORE') return !g.subject.elective_group || g.subject.elective_group === 'NONE';
+    if (filter === 'OE1') return g.subject.elective_group === 'OE1';
+    if (filter === 'OE2') return g.subject.elective_group === 'OE2';
+    if (filter === '2') return g.subject.academic_year === 2;
+    if (filter === '3') return g.subject.academic_year === 3;
     return true;
   });
+
   const totalSubjects = subjects.length;
   const totalMappings = mappings.length;
   const totalCapacity = mappings.reduce((sum, m) => sum + (m.capacity || 0), 0);
@@ -1046,12 +974,19 @@ function renderMappingsList() {
 
   container.innerHTML = `
     <div class="space-y-6">
-      ${modeSwitcherHtml}
-
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h3 class="text-base font-bold text-slate-900">Core Faculty–Subject Mappings (1 Subject → N Faculties)</h3>
-          <p class="text-xs text-slate-500">Each regular core course subject is mapped to N faculty members with independent seat capacities for student selection.</p>
+          <h3 class="text-base font-bold text-slate-900">Faculty–Subject Mapping (1 Subject → N Faculties)</h3>
+          <p class="text-xs text-slate-500">Curriculum core subjects and open electives mapped to N faculty members with independent seat capacities for Group 1 (Group A) and Group 2 (Group B).</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="openAddMappingModal()" class="py-2 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all">
+            <i class="fa-solid fa-plus"></i>
+            <span>Map Subject to N Faculties</span>
+          </button>
+          <button onclick="loadAdminMappings()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all" title="Refresh Mappings">
+            <i class="fa-solid fa-rotate text-xs"></i>
+          </button>
         </div>
       </div>
 
@@ -1098,15 +1033,24 @@ function renderMappingsList() {
         </div>
       </div>
 
-      <!-- Year Filter Tabs -->
-      <div class="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl w-fit">
-        <button onclick="ADMIN_DATA.mappingYearFilter = 'ALL'; renderMappingsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${yearFilter === 'ALL' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+      <!-- Category & Year Filter Tabs -->
+      <div class="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 rounded-xl w-fit">
+        <button onclick="ADMIN_DATA.mappingFilter = 'ALL'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'ALL' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
           All Courses (${subjects.length})
         </button>
-        <button onclick="ADMIN_DATA.mappingYearFilter = '2'; renderMappingsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${yearFilter === '2' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+        <button onclick="ADMIN_DATA.mappingFilter = 'CORE'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'CORE' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+          Core Subjects (${subjects.filter(s => !s.elective_group || s.elective_group === 'NONE').length})
+        </button>
+        <button onclick="ADMIN_DATA.mappingFilter = 'OE1'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'OE1' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+          Open Elective – I (${subjects.filter(s => s.elective_group === 'OE1').length})
+        </button>
+        <button onclick="ADMIN_DATA.mappingFilter = 'OE2'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'OE2' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+          Open Elective – II (${subjects.filter(s => s.elective_group === 'OE2').length})
+        </button>
+        <button onclick="ADMIN_DATA.mappingFilter = '2'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === '2' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
           2nd Year II-II (${subjects.filter(s => s.academic_year === 2).length})
         </button>
-        <button onclick="ADMIN_DATA.mappingYearFilter = '3'; renderMappingsList();" class="px-4 py-2 text-xs font-bold rounded-lg transition-all ${yearFilter === '3' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+        <button onclick="ADMIN_DATA.mappingFilter = '3'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === '3' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
           3rd Year III-II (${subjects.filter(s => s.academic_year === 3).length})
         </button>
       </div>
@@ -1135,7 +1079,10 @@ function renderMappingsList() {
                     ${sub.code}
                   </span>
                   <div>
-                    <h4 class="text-base font-bold text-white tracking-tight">${sub.name}</h4>
+                    <div class="flex items-center gap-2">
+                      <h4 class="text-base font-bold text-white tracking-tight">${sub.name}</h4>
+                      ${sub.elective_group === 'OE1' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-purple-500/30 text-purple-200 border border-purple-400/30">Open Elective – I</span>' : (sub.elective_group === 'OE2' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">Open Elective – II</span>' : '')}
+                    </div>
                     <p class="text-xs text-blue-200 mt-0.5">
                       Year ${sub.academic_year} &bull; Semester ${sub.semester} &bull; <strong class="text-white">${mapList.length} Faculties Mapped</strong>
                     </p>
@@ -1173,9 +1120,12 @@ function renderMappingsList() {
                           ${m.faculty_code || 'FAC'}
                         </div>
                         <div>
-                          <div class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                          <div class="text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                             <span>${m.faculty_name}</span>
                             ${alias ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 capitalize">Alias: ${alias}</span>` : ''}
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${m.target_group === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (m.target_group === 'Group 2' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-700')}">
+                              ${m.target_group === 'Group 1' ? 'Group A (501–5E2)' : (m.target_group === 'Group 2' ? 'Group B (5E3–5KP)' : 'All Cohorts')}
+                            </span>
                           </div>
                           <div class="text-xs text-slate-500 mt-0.5">
                             ${m.department || 'CSE'} &bull; ${m.faculty_designation || 'Faculty Member'}
