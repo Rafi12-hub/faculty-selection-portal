@@ -184,11 +184,6 @@
           <i class="fa-solid fa-book-open"></i>
           <span>Eligible Subjects & Faculty Selection</span>
         </button>
-        <button onclick="switchStudentTab('open-electives')" id="stu-tab-open-electives" class="px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all whitespace-nowrap">
-          <i class="fa-solid fa-shapes text-indigo-600"></i>
-          <span>My Open Electives</span>
-          <span id="stu-oe-badge" class="text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">3rd Year</span>
-        </button>
         <button onclick="switchStudentTab('selections')" id="stu-tab-selections" class="px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all whitespace-nowrap">
           <i class="fa-solid fa-circle-check"></i>
           <span>My Confirmed Selections</span>
@@ -230,13 +225,6 @@
 
         <div id="stu-selections-list" class="printable-area bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <!-- Dynamic Confirmed Selections Table -->
-        </div>
-      </div>
-
-      <!-- Student Tab Content: Open Electives (3rd Year) -->
-      <div id="stu-content-open-electives" class="hidden space-y-6">
-        <div id="stu-oe-container">
-          <!-- Rendered dynamically by student.js -->
         </div>
       </div>
     </div>
@@ -314,8 +302,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <!-- App Scripts -->
-  <script src="/js/app.js?v=4.2"></script>
-  <script src="/js/student.js?v=4.2"></script>
-  <script src="/js/admin.js?v=4.2"></script>
+  <script src="/js/app.js?v=4.3"></script>
+  <script src="/js/student.js?v=4.3"></script>
+  <script src="/js/admin.js?v=4.3"></script>
 </body>
 </html>

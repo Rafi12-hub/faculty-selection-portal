@@ -30,7 +30,6 @@ async function initStudentPortal() {
   document.getElementById('stu-disp-sec').textContent = sec.startsWith('Group') ? sec : `Group ${sec}`;
 
   await loadStudentData();
-  loadStudentOpenElectives(); // Check open electives status in background
 
   // Start real-time live seat auto-refresh every 3.5 seconds
   if (STATE.liveInterval) clearInterval(STATE.liveInterval);
@@ -41,10 +40,16 @@ async function initStudentPortal() {
 async function refreshStudentLiveSeats() {
   if (!STATE.student || STATE.activeStudentTab !== 'subjects') return;
   try {
-    const [mapRes, roundsRes] = await Promise.all([
+    const is3rdYear = STATE.student && STATE.student.academic_year === 3;
+    const pollPromises = [
       api.get('/api/mappings'),
       api.get('/api/rounds')
-    ]);
+    ];
+    if (is3rdYear) {
+      pollPromises.push(api.get('/api/open-electives'));
+    }
+
+    const [mapRes, roundsRes, oeRes] = await Promise.all(pollPromises);
 
     const prevRoundStatus = ACTIVE_ROUND ? ACTIVE_ROUND.status : null;
     const userGroup = STATE.student ? STATE.student.section : null;
@@ -52,10 +57,11 @@ async function refreshStudentLiveSeats() {
       ? (roundsRes.rounds.find(r => r.target_group === userGroup) || roundsRes.rounds.find(r => r.target_group === 'ALL') || roundsRes.rounds[0])
       : null;
 
+    let needsRerender = false;
+
     if (mapRes && mapRes.mappings) {
       const previousStatuses = new Map(STUDENT_MAPPINGS.map(m => [m.id, m.availability_status]));
       STUDENT_MAPPINGS = mapRes.mappings;
-      let needsRerender = false;
 
       STUDENT_MAPPINGS.forEach(m => {
         const isFull = m.availability_status === 'FULL';
@@ -71,17 +77,18 @@ async function refreshStudentLiveSeats() {
           showToast(`Seat capacity for ${m.faculty_name} just filled up! Please select an available faculty.`, 'warning');
         }
       });
+    }
 
-      if (needsRerender) {
-        renderStudentSubjects();
-      }
+    // Refresh Open Elective availability live for 3rd Year
+    if (is3rdYear && oeRes && oeRes.success && oeRes.electives) {
+      STUDENT_OE_DATA = oeRes.electives;
     }
 
     if (latestRound) {
       ACTIVE_ROUND = latestRound;
       // If round status transitioned (e.g. from NOT STARTED/PAUSED to ACTIVE), re-render to unlock UI!
       if (prevRoundStatus !== ACTIVE_ROUND.status) {
-        renderStudentSubjects();
+        needsRerender = true;
         if (ACTIVE_ROUND.status === 'ACTIVE') {
           showToast('🟢 Live Selection is now LIVE! You can select your faculty.', 'success');
         } else if (ACTIVE_ROUND.status === 'PAUSED') {
@@ -89,48 +96,46 @@ async function refreshStudentLiveSeats() {
         }
       }
     }
+
+    if (needsRerender) {
+      renderStudentSubjects();
+    }
   } catch (e) {
     console.error('Failed to refresh student faculty availability:', e);
   }
 }
 
 function switchStudentTab(tab) {
-  STATE.activeStudentTab = tab;
+  STATE.activeStudentTab = tab === 'selections' ? 'selections' : 'subjects';
   const tabSubjects = document.getElementById('stu-tab-subjects');
-  const tabOE = document.getElementById('stu-tab-open-electives');
   const tabSelections = document.getElementById('stu-tab-selections');
   const contentSubjects = document.getElementById('stu-content-subjects');
-  const contentOE = document.getElementById('stu-content-open-electives');
   const contentSelections = document.getElementById('stu-content-selections');
 
   const defaultTabClass = 'px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all whitespace-nowrap';
   const activeBlueClass = 'px-5 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2 transition-all whitespace-nowrap';
-  const activeIndigoClass = 'px-5 py-3 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 transition-all whitespace-nowrap';
 
   if (tabSubjects) tabSubjects.className = defaultTabClass;
-  if (tabOE) tabOE.className = defaultTabClass;
   if (tabSelections) tabSelections.className = defaultTabClass;
 
   if (contentSubjects) contentSubjects.classList.add('hidden');
-  if (contentOE) contentOE.classList.add('hidden');
   if (contentSelections) contentSelections.classList.add('hidden');
 
-  if (tab === 'subjects') {
-    if (tabSubjects) tabSubjects.className = activeBlueClass;
-    if (contentSubjects) contentSubjects.classList.remove('hidden');
-  } else if (tab === 'open-electives') {
-    if (tabOE) tabOE.className = activeIndigoClass;
-    if (contentOE) contentOE.classList.remove('hidden');
-    loadStudentOpenElectives();
-  } else {
+  if (STATE.activeStudentTab === 'selections') {
     if (tabSelections) tabSelections.className = activeBlueClass;
     if (contentSelections) contentSelections.classList.remove('hidden');
     renderStudentSelections();
+  } else {
+    if (tabSubjects) tabSubjects.className = activeBlueClass;
+    if (contentSubjects) contentSubjects.classList.remove('hidden');
+    renderStudentSubjects();
   }
 }
 
 async function loadStudentData() {
   try {
+    const is3rdYear = STATE.student && STATE.student.academic_year === 3;
+
     // 1. Fetch Rounds
     const roundsRes = await api.get('/api/rounds');
     const userGroup = STATE.student ? STATE.student.section : null;
@@ -147,21 +152,43 @@ async function loadStudentData() {
       roundBadge.classList.add('hidden');
     }
 
-    // 2. Fetch My Selections
-    const selRes = await api.get('/api/selections/my');
+    // 2. Fetch My Selections, Subjects, Mappings, and if 3rd Year Open Electives
+    const promises = [
+      api.get('/api/selections/my'),
+      api.get('/api/subjects'),
+      api.get('/api/mappings')
+    ];
+    if (is3rdYear) {
+      promises.push(api.get('/api/open-electives'));
+      promises.push(api.get('/api/open-electives/my'));
+    }
+
+    const results = await Promise.all(promises);
+    const selRes = results[0];
+    const subRes = results[1];
+    const mapRes = results[2];
+
     STUDENT_SELECTIONS = selRes ? selRes.selections : [];
-
-    // Update count badge
-    const confirmedCount = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED').length;
-    document.getElementById('stu-confirmed-badge').textContent = confirmedCount;
-
-    // 3. Fetch Eligible Subjects
-    const subRes = await api.get('/api/subjects');
     STUDENT_SUBJECTS = subRes ? subRes.subjects : [];
-
-    // 4. Fetch Eligible Mappings for this student
-    const mapRes = await api.get('/api/mappings');
     STUDENT_MAPPINGS = mapRes ? mapRes.mappings : [];
+
+    if (is3rdYear) {
+      const oeRes = results[3];
+      const myOeRes = results[4];
+      STUDENT_OE_DATA = (oeRes && oeRes.success) ? oeRes.electives : [];
+      STUDENT_OE_MY = myOeRes || null;
+    } else {
+      STUDENT_OE_DATA = [];
+      STUDENT_OE_MY = null;
+    }
+
+    // Update count badge across all confirmed courses
+    const confirmedRegularCount = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED').length;
+    const confirmedOeCount = (STUDENT_OE_MY && STUDENT_OE_MY.registrations) ? STUDENT_OE_MY.registrations.length : 0;
+    const badgeEl = document.getElementById('stu-confirmed-badge');
+    if (badgeEl) {
+      badgeEl.textContent = confirmedRegularCount + confirmedOeCount;
+    }
 
     renderStudentSubjects();
     if (STATE.activeStudentTab === 'selections') {
@@ -197,7 +224,11 @@ function renderStudentSubjects() {
   const container = document.getElementById('stu-subjects-list');
   if (!container) return;
 
-  if (STUDENT_SUBJECTS.length === 0) {
+  const is3rdYear = STATE.student && STATE.student.academic_year === 3;
+  const hasRegularSubjects = STUDENT_SUBJECTS && STUDENT_SUBJECTS.length > 0;
+  const hasOpenElectives = is3rdYear && STUDENT_OE_DATA && STUDENT_OE_DATA.length > 0;
+
+  if (!hasRegularSubjects && !hasOpenElectives) {
     container.innerHTML = `
       <div class="py-16 text-center bg-white rounded-2xl border border-slate-200">
         <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-2xl mb-3">
@@ -214,7 +245,7 @@ function renderStudentSubjects() {
   const isPaused = ACTIVE_ROUND && ACTIVE_ROUND.status === 'PAUSED';
 
   const formHeaderHtml = `
-    <!-- Google Form Questionnaire Header Card -->
+    <!-- Questionnaire Header Card -->
     <div class="bg-white rounded-2xl border-t-8 ${isLiveActive ? 'border-t-emerald-600' : 'border-t-amber-500'} border border-slate-200 shadow-sm p-6 sm:p-7 space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -281,23 +312,19 @@ function renderStudentSubjects() {
       <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-start gap-2.5">
         <i class="fa-solid fa-circle-info text-indigo-600 text-sm mt-0.5"></i>
         <div>
-          <strong>Instructions:</strong> Mark only one oval for each subject below and click <strong>Confirm Selection</strong>. Seats are allocated strictly on a First-Come, First-Served basis and reservations are permanent once confirmed.
+          <strong>Instructions:</strong> Choose your preferred faculty member for each course below. Seats are allocated strictly on a First-Come, First-Served basis and reservations are permanent once confirmed.
         </div>
       </div>
     </div>
   `;
 
-  const subjectsHtml = STUDENT_SUBJECTS.map((subject, idx) => {
-    // Check if student already selected faculty for this subject
+  // 1. Regular Core Subjects Cards
+  const regularSubjectsHtml = STUDENT_SUBJECTS.map((subject, idx) => {
     const confirmedSelection = STUDENT_SELECTIONS.find(
       s => s.subject_id === subject.id && s.status === 'CONFIRMED'
     );
     const hasSelection = !!confirmedSelection;
-
-    // Get active mappings for this subject
     const subjectMappings = STUDENT_MAPPINGS.filter(m => m.subject_id === subject.id && m.status === 'ACTIVE');
-
-    // Check if any mappings in this subject are full
     const hasFullFaculty = subjectMappings.some(m => m.availability_status === 'FULL');
 
     return `
@@ -337,41 +364,33 @@ function renderStudentSubjects() {
               No faculty assigned to this subject yet.
             </div>
           ` : subjectMappings.map(m => {
-      const isConfirmedForThis = hasSelection && confirmedSelection.mapping_id === m.id;
-      // The selected faculty is unavailable for new students once marked Full.
-      const isFull = (m.availability_status === 'FULL' || m.is_full) && !isConfirmedForThis;
-      const isFillingFast = m.availability_status === 'FILLING_FAST';
-      const isAvailable = !isFull && !isFillingFast;
+            const isConfirmedForThis = hasSelection && confirmedSelection.mapping_id === m.id;
+            const isFull = (m.availability_status === 'FULL' || m.is_full) && !isConfirmedForThis;
+            const isFillingFast = m.availability_status === 'FILLING_FAST';
 
-      // Auto-clear from pending if it became full
-      if (isFull && PENDING_SELECTIONS[subject.id] === m.id) {
-        delete PENDING_SELECTIONS[subject.id];
-      }
+            if (isFull && PENDING_SELECTIONS[subject.id] === m.id) {
+              delete PENDING_SELECTIONS[subject.id];
+            }
 
-      const isSelected = isConfirmedForThis || (PENDING_SELECTIONS[subject.id] === m.id);
-      const alias = FACULTY_ALIASES[m.faculty_code];
+            const isSelected = isConfirmedForThis || (PENDING_SELECTIONS[subject.id] === m.id);
+            const alias = FACULTY_ALIASES[m.faculty_code];
 
-      return `
+            return `
               <div 
                 onclick="${(isLiveActive && !hasSelection && !isFull) ? `setPendingSelection(${subject.id}, ${m.id})` : ''}"
                 class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected
-          ? (hasSelection ? 'border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-400' : 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25')
-          : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm hover:shadow' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))
-        }">
+                  ? (hasSelection ? 'border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-400' : 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25')
+                  : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm hover:shadow' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))
+                }">
                 
                 <div class="flex items-center gap-3.5 min-w-0">
-                  <!-- Radio Oval -->
                   <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected
-          ? (hasSelection ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-indigo-600 bg-indigo-600 text-white')
-          : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')
-        }">
-                    ${isSelected
-          ? '<i class="fa-solid fa-check text-[10px]"></i>'
-          : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')
-        }
+                    ? (hasSelection ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-indigo-600 bg-indigo-600 text-white')
+                    : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')
+                  }">
+                    ${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
                   </div>
 
-                  <!-- Faculty Name & Alias -->
                   <div class="min-w-0">
                     <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
                       <span>${alias ? `<span class="capitalize text-indigo-900">${alias}</span> <span class="text-slate-500 font-normal text-xs">(${m.faculty_name})</span>` : m.faculty_name}</span>
@@ -387,7 +406,6 @@ function renderStudentSubjects() {
                   </div>
                 </div>
 
-                <!-- Seat Availability Badge -->
                 <div class="flex items-center gap-2 flex-shrink-0 pl-2">
                   ${isFull ? `
                     <div class="text-right">
@@ -402,7 +420,6 @@ function renderStudentSubjects() {
                         <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                         <span>Filling Fast</span>
                       </span>
-                      ${!hasSelection && !isSelected ? `<div class="text-[10px] text-amber-700 font-semibold mt-0.5">High Demand</div>` : ''}
                     </div>
                   ` : `
                     <div class="text-right">
@@ -410,13 +427,12 @@ function renderStudentSubjects() {
                         <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
                         <span>Available</span>
                       </span>
-                      ${!hasSelection && !isSelected ? `<div class="text-[10px] text-emerald-700 font-semibold mt-0.5">Click to choose</div>` : ''}
                     </div>
                   `)}
                 </div>
               </div>
             `;
-    }).join('')}
+          }).join('')}
         </div>
 
         <!-- Action / Status Footer -->
@@ -445,20 +461,189 @@ function renderStudentSubjects() {
     `;
   }).join('');
 
-  // Calculate batch progress
-  const totalSubjects = STUDENT_SUBJECTS.length;
-  const confirmedCount = STUDENT_SUBJECTS.filter(sub => 
+  // 2. Open Electives Cards for 3rd Year Students
+  let oeCardsHtml = '';
+  if (is3rdYear && STUDENT_OE_DATA && STUDENT_OE_DATA.length > 0) {
+    oeCardsHtml = STUDENT_OE_DATA.map((elective, elIdx) => {
+      const confirmedReg = (STUDENT_OE_MY && STUDENT_OE_MY.registrations)
+        ? STUDENT_OE_MY.registrations.find(r => r.elective_id === elective.id)
+        : null;
+      const hasSelection = !!confirmedReg;
+      const pending = PENDING_OE_SELECTIONS[elective.id] || { subjectId: null, assignmentId: null };
+      const subjects = elective.subjects || [];
+
+      // Auto-select first subject if not set
+      const currentSubjectId = pending.subjectId || (subjects.length > 0 ? subjects[0].id : null);
+      if (!pending.subjectId && currentSubjectId) {
+        pending.subjectId = currentSubjectId;
+        PENDING_OE_SELECTIONS[elective.id] = pending;
+      }
+
+      const currentSubject = subjects.find(s => s.id === currentSubjectId) || subjects[0];
+      const facultyAssignments = currentSubject ? (currentSubject.faculty_assignments || []) : [];
+      const cardNum = STUDENT_SUBJECTS.length + elIdx + 1;
+
+      return `
+        <div id="oe-card-${elective.id}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-indigo-200 ring-2 ring-indigo-500/10'} shadow-sm p-6 space-y-4 transition-all">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px]">OPEN ELECTIVE</span>
+                <h3 class="text-base sm:text-lg font-bold text-slate-900">${cardNum}. ${elective.name}</h3>
+              </div>
+              <p class="text-xs text-slate-500 italic mt-0.5 font-medium">Select 1 Subject and 1 Faculty from the available options.</p>
+            </div>
+            ${hasSelection ? `
+              <span class="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-circle-check text-emerald-600"></i> Confirmed
+              </span>
+            ` : `
+              <span class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+                Required
+              </span>
+            `}
+          </div>
+
+          ${hasSelection ? `
+            <div class="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div class="text-[10px] font-bold text-emerald-700 uppercase">Confirmed Course &amp; Faculty</div>
+                <div class="text-sm font-bold text-slate-900 mt-0.5">${confirmedReg.subject_name}</div>
+                <div class="text-xs text-indigo-700 font-semibold mt-0.5">Faculty: ${confirmedReg.faculty_name}</div>
+              </div>
+              <div class="text-[11px] text-slate-500 text-right">
+                Confirmed on ${new Date(confirmedReg.registered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          ` : `
+            <!-- Step 1: Subject Selection Pills -->
+            <div class="space-y-2">
+              <div class="text-xs font-bold text-slate-700 flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">1</span>
+                <span>Choose Subject:</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                ${subjects.map(s => {
+                  const isSubSelected = s.id === currentSubjectId;
+                  return `
+                    <div onclick="selectOESubject(${elective.id}, ${s.id})" class="p-3 rounded-xl border text-xs cursor-pointer transition-all ${isSubSelected ? 'border-indigo-600 bg-indigo-50/70 font-bold text-indigo-900 shadow-sm' : 'border-slate-200 bg-white hover:border-indigo-300 text-slate-700'}">
+                      <div class="flex items-center justify-between">
+                        <span class="truncate">${s.subject_name}</span>
+                        ${isSubSelected ? '<i class="fa-solid fa-circle-check text-indigo-600 text-xs"></i>' : ''}
+                      </div>
+                      ${s.description ? `<p class="text-[10px] text-slate-500 font-normal line-clamp-1 mt-0.5">${s.description}</p>` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- Step 2: Faculty Selection Radio Ovals with 3-Color Indicators -->
+            <div class="space-y-2 pt-2 border-t border-slate-100">
+              <div class="text-xs font-bold text-slate-700 flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">2</span>
+                <span>Choose Faculty for ${currentSubject ? currentSubject.subject_name : 'Selected Subject'}:</span>
+              </div>
+              <div class="space-y-2.5">
+                ${facultyAssignments.length === 0 ? `
+                  <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                    No faculty assigned to this subject yet. Please pick another subject.
+                  </div>
+                ` : facultyAssignments.map(fa => {
+                  const isFull = fa.color === 'red' || fa.status_label === 'Faculty Capacity Reached';
+                  const isFillingFast = fa.color === 'yellow' || fa.status_label === 'Filling Fast';
+                  const isSelected = pending.assignmentId === fa.assignment_id;
+
+                  let indicatorBg = 'bg-emerald-500';
+                  let statusText = 'Available';
+                  if (isFull) {
+                    indicatorBg = 'bg-rose-500';
+                    statusText = 'Faculty Capacity Reached';
+                  } else if (isFillingFast) {
+                    indicatorBg = 'bg-amber-500 animate-pulse';
+                    statusText = 'Filling Fast';
+                  }
+
+                  return `
+                    <div onclick="${!isFull ? `selectOEFaculty(${elective.id}, ${fa.assignment_id})` : ''}" class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25' : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm')}">
+                      <div class="flex items-center gap-3.5 min-w-0">
+                        <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
+                          ${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
+                        </div>
+                        <div class="min-w-0">
+                          <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
+                            <span>${fa.faculty_name}</span>
+                            <span class="w-2.5 h-2.5 rounded-full ${indicatorBg} flex-shrink-0"></span>
+                          </div>
+                          <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
+                            <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
+                            <span>${statusText}</span>
+                          </div>
+                          <div class="text-[11px] text-slate-500 truncate mt-0.5">
+                            ${fa.designation || 'Department Faculty'} &bull; ${fa.department || 'CSE'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="flex items-center gap-2 flex-shrink-0 pl-2">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isFull ? 'bg-rose-100 text-rose-700 border border-rose-300' : (isFillingFast ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300')}">
+                          <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
+                          <span>${statusText}</span>
+                        </span>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- Step 3: Confirm Card Footer -->
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <div class="text-xs text-slate-500">
+                ${pending.assignmentId 
+                  ? '<span class="text-indigo-700 font-bold"><i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> Faculty selected. Ready to confirm.</span>'
+                  : 'Choose a faculty above to lock this elective.'}
+              </div>
+              <button 
+                ${!pending.assignmentId ? 'disabled' : ''}
+                onclick="confirmOESelection(${elective.id})"
+                class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${pending.assignmentId 
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 cursor-pointer' 
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
+                <i class="fa-solid fa-lock"></i>
+                <span>Confirm ${elective.name}</span>
+              </button>
+            </div>
+          `}
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Calculate combined progress
+  const totalCoreSubjects = STUDENT_SUBJECTS.length;
+  const totalOeElectives = (is3rdYear && STUDENT_OE_DATA) ? STUDENT_OE_DATA.length : 0;
+  const totalAllCourses = totalCoreSubjects + totalOeElectives;
+
+  const confirmedCoreCount = STUDENT_SUBJECTS.filter(sub => 
     STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED')
   ).length;
+  const confirmedOeCount = (STUDENT_OE_MY && STUDENT_OE_MY.registrations) ? STUDENT_OE_MY.registrations.length : 0;
+  const totalConfirmed = confirmedCoreCount + confirmedOeCount;
 
-  const newlySelectedCount = STUDENT_SUBJECTS.filter(sub => {
+  const newlySelectedCoreCount = STUDENT_SUBJECTS.filter(sub => {
     const hasConf = STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED');
     return !hasConf && PENDING_SELECTIONS[sub.id];
   }).length;
 
-  const totalFilled = confirmedCount + newlySelectedCount;
-  const isAllFilled = totalFilled >= totalSubjects && totalSubjects > 0;
-  const remaining = totalSubjects - totalFilled;
+  const newlySelectedOeCount = (is3rdYear && STUDENT_OE_DATA) ? STUDENT_OE_DATA.filter(e => {
+    const hasConf = (STUDENT_OE_MY && STUDENT_OE_MY.registrations) ? STUDENT_OE_MY.registrations.some(r => r.elective_id === e.id) : false;
+    return !hasConf && PENDING_OE_SELECTIONS[e.id] && PENDING_OE_SELECTIONS[e.id].assignmentId;
+  }).length : 0;
+
+  const totalFilled = totalConfirmed + newlySelectedCoreCount + newlySelectedOeCount;
+  const isAllFilled = totalFilled >= totalAllCourses && totalAllCourses > 0;
+  const remaining = totalAllCourses - totalFilled;
 
   // Single Master Confirmation Card at the bottom of the form
   const bottomSubmitBar = `
@@ -468,38 +653,33 @@ function renderStudentSubjects() {
           <div class="flex items-center gap-2.5">
             <span class="w-3 h-3 rounded-full ${isAllFilled ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}"></span>
             <h4 class="text-base font-black text-slate-900">
-              Faculty Selection Summary (${totalFilled} / ${totalSubjects} Chosen)
+              Course Selection Summary (${totalFilled} / ${totalAllCourses} Chosen)
             </h4>
           </div>
           <p class="text-xs text-slate-500 mt-1">
             ${isAllFilled 
-              ? '🎉 All subjects have a selected faculty! Click the confirm button to finalize and lock your choices.' 
+              ? '🎉 All courses have a selected faculty! Confirm your choices above or download your confirmation slip.' 
               : `Please mark your faculty choice for all courses before submitting (${remaining} course${remaining > 1 ? 's' : ''} remaining).`}
           </p>
         </div>
 
         <div class="flex items-center gap-3">
-          ${isLiveActive ? `
+          ${isAllFilled ? `
             <button 
-              ${!isAllFilled ? 'disabled' : ''}
-              onclick="openBatchConfirmationModal()"
-              class="w-full md:w-auto px-7 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2.5 ${isAllFilled 
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 cursor-pointer transform hover:scale-[1.02] active:scale-[0.98]' 
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'}">
-              <i class="fa-solid fa-check-double text-sm"></i>
-              <span>${isAllFilled ? 'Submit & Confirm All Faculties' : `Select All Courses (${remaining} left)`}</span>
+              onclick="switchStudentTab('selections')"
+              class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 cursor-pointer">
+              <i class="fa-solid fa-circle-check text-sm"></i>
+              <span>View Confirmed Courses</span>
             </button>
           ` : `
-            <button disabled class="px-6 py-3 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200">
-              <i class="fa-solid fa-lock mr-1.5"></i> Selection Not Active
-            </button>
+            <span class="text-xs font-semibold text-slate-500">${remaining} courses to choose</span>
           `}
         </div>
       </div>
     </div>
   `;
 
-  container.innerHTML = formHeaderHtml + subjectsHtml + bottomSubmitBar;
+  container.innerHTML = formHeaderHtml + regularSubjectsHtml + oeCardsHtml + bottomSubmitBar;
 }
 
 // Master Confirmation Modal reviewing all chosen faculties
@@ -852,7 +1032,23 @@ function renderStudentSelections() {
   const container = document.getElementById('stu-selections-list');
   if (!container) return;
 
-  const confirmed = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED');
+  const regularConfirmed = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED');
+  const oeConfirmed = ((STUDENT_OE_MY && STUDENT_OE_MY.registrations) || []).map(r => ({
+    id: `oe-${r.id}`,
+    is_oe: true,
+    oe_id: r.id,
+    subject_id: r.subject_id,
+    subject_name: `${r.elective_name}: ${r.subject_name}`,
+    subject_code: r.subject_code || 'OPEN-ELECTIVE',
+    faculty_name: r.faculty_name,
+    faculty_code: r.faculty_code || 'FAC',
+    faculty_designation: r.faculty_designation || 'Department Faculty',
+    faculty_specialization: r.faculty_specialization || 'Open Elective Instructor',
+    reserved_at: r.registered_at,
+    status: 'CONFIRMED'
+  }));
+
+  const confirmed = [...regularConfirmed, ...oeConfirmed];
 
   if (confirmed.length === 0) {
     container.innerHTML = `
@@ -934,7 +1130,7 @@ function renderStudentSelections() {
             </div>
           </article>
           <div class="flex justify-end no-print">
-            <button onclick="downloadSelectionScreenshot(${s.id})" class="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-800">
+            <button onclick="downloadSelectionScreenshot('${s.id}')" class="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-800">
               <i class="fa-solid fa-download" aria-hidden="true"></i>
               <span>Download Screenshot</span>
             </button>
@@ -959,7 +1155,7 @@ function renderStudentSelections() {
             <tr class="hover:bg-slate-50/80 transition-colors">
               <td class="py-4 px-6">
                 <div class="font-bold text-slate-900">${s.subject_name}</div>
-                <div class="mono-font text-[11px] text-blue-600">${s.subject_code} &bull; ${s.subject_credits || 3} Credits</div>
+                <div class="mono-font text-[11px] text-blue-600">${s.subject_code} &bull; 3 Credits</div>
               </td>
               <td class="py-4 px-6">
                 <div class="font-bold text-slate-900">${s.faculty_name}</div>
@@ -1033,13 +1229,22 @@ async function downloadMasterSlipScreenshot() {
 
 async function downloadSelectionScreenshot(selectionId) {
   try {
-    const selection = STUDENT_SELECTIONS.find(s => s.id === selectionId && s.status === 'CONFIRMED');
-    if (!selection || !STATE.student) {
-      throw new Error('The confirmed selection could not be found.');
+    const isOe = String(selectionId).startsWith('oe-');
+    let subjectCode = 'COURSE';
+    if (isOe) {
+      const oeId = parseInt(String(selectionId).replace('oe-', ''), 10);
+      const oeReg = (STUDENT_OE_MY && STUDENT_OE_MY.registrations) ? STUDENT_OE_MY.registrations.find(r => r.id === oeId) : null;
+      if (oeReg) subjectCode = oeReg.subject_code || 'OE';
+    } else {
+      const selection = STUDENT_SELECTIONS.find(s => s.id === selectionId && s.status === 'CONFIRMED');
+      if (selection) subjectCode = selection.subject_code;
     }
 
     const cardEl = document.getElementById(`selection-confirmation-${selectionId}`);
-    const safeName = `${STATE.student.reg_no}-${selection.subject_code}-confirmation`.replace(/[^a-z0-9_-]/gi, '-');
+    if (!cardEl || !STATE.student) {
+      throw new Error('The confirmed selection could not be found.');
+    }
+    const safeName = `${STATE.student.reg_no}-${subjectCode}-confirmation`.replace(/[^a-z0-9_-]/gi, '-');
 
     // 1. Try html2canvas DOM capture first (high-resolution capture of exact card element)
     if (typeof html2canvas === 'function' && cardEl) {
@@ -1711,7 +1916,7 @@ function selectOESubject(electiveId, subjectId) {
   }
   PENDING_OE_SELECTIONS[electiveId].subjectId = subjectId;
   PENDING_OE_SELECTIONS[electiveId].assignmentId = null; // reset faculty choice if subject changed
-  renderStudentOpenElectives();
+  renderStudentSubjects();
 }
 
 function selectOEFaculty(electiveId, assignmentId) {
@@ -1719,7 +1924,7 @@ function selectOEFaculty(electiveId, assignmentId) {
     PENDING_OE_SELECTIONS[electiveId] = { subjectId: null, assignmentId: null };
   }
   PENDING_OE_SELECTIONS[electiveId].assignmentId = assignmentId;
-  renderStudentOpenElectives();
+  renderStudentSubjects();
 }
 
 async function confirmOESelection(electiveId) {
@@ -1739,11 +1944,11 @@ async function confirmOESelection(electiveId) {
     if (res && res.success) {
       showToast(res.message || 'Open elective selection confirmed successfully!', 'success');
       delete PENDING_OE_SELECTIONS[electiveId];
-      await loadStudentOpenElectives();
+      await loadStudentData();
     }
   } catch (err) {
     showToast(err.message || 'Could not confirm selection.', 'error');
-    await loadStudentOpenElectives(); // refresh live status
+    await loadStudentData(); // refresh live status
   }
 }
 
@@ -1911,4 +2116,23 @@ async function downloadOpenElectiveScreenshot() {
     window.print();
   }
 }
+
+// Global window exposure to guarantee instant handler availability
+window.initStudentPortal = initStudentPortal;
+window.switchStudentTab = switchStudentTab;
+window.loadStudentData = loadStudentData;
+window.renderStudentSubjects = renderStudentSubjects;
+window.renderStudentSelections = renderStudentSelections;
+window.selectOESubject = selectOESubject;
+window.selectOEFaculty = selectOEFaculty;
+window.confirmOESelection = confirmOESelection;
+window.downloadSelectionScreenshot = downloadSelectionScreenshot;
+window.downloadMasterSlipScreenshot = downloadMasterSlipScreenshot;
+window.setPendingSelection = setPendingSelection;
+window.submitSubjectSelection = submitSubjectSelection;
+window.confirmFacultyReservation = confirmFacultyReservation;
+window.executeReservation = executeReservation;
+window.openBatchConfirmationModal = openBatchConfirmationModal;
+window.executeBatchReservation = executeBatchReservation;
+
 
