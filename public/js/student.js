@@ -30,6 +30,7 @@ async function initStudentPortal() {
   document.getElementById('stu-disp-sec').textContent = sec.startsWith('Group') ? sec : `Group ${sec}`;
 
   await loadStudentData();
+  loadStudentOpenElectives(); // Check open electives status in background
 
   // Start real-time live seat auto-refresh every 3.5 seconds
   if (STATE.liveInterval) clearInterval(STATE.liveInterval);
@@ -96,20 +97,34 @@ async function refreshStudentLiveSeats() {
 function switchStudentTab(tab) {
   STATE.activeStudentTab = tab;
   const tabSubjects = document.getElementById('stu-tab-subjects');
+  const tabOE = document.getElementById('stu-tab-open-electives');
   const tabSelections = document.getElementById('stu-tab-selections');
   const contentSubjects = document.getElementById('stu-content-subjects');
+  const contentOE = document.getElementById('stu-content-open-electives');
   const contentSelections = document.getElementById('stu-content-selections');
 
+  const defaultTabClass = 'px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all whitespace-nowrap';
+  const activeBlueClass = 'px-5 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2 transition-all whitespace-nowrap';
+  const activeIndigoClass = 'px-5 py-3 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 flex items-center gap-2 transition-all whitespace-nowrap';
+
+  if (tabSubjects) tabSubjects.className = defaultTabClass;
+  if (tabOE) tabOE.className = defaultTabClass;
+  if (tabSelections) tabSelections.className = defaultTabClass;
+
+  if (contentSubjects) contentSubjects.classList.add('hidden');
+  if (contentOE) contentOE.classList.add('hidden');
+  if (contentSelections) contentSelections.classList.add('hidden');
+
   if (tab === 'subjects') {
-    tabSubjects.className = 'px-5 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2 transition-all';
-    tabSelections.className = 'px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all';
-    contentSubjects.classList.remove('hidden');
-    contentSelections.classList.add('hidden');
+    if (tabSubjects) tabSubjects.className = activeBlueClass;
+    if (contentSubjects) contentSubjects.classList.remove('hidden');
+  } else if (tab === 'open-electives') {
+    if (tabOE) tabOE.className = activeIndigoClass;
+    if (contentOE) contentOE.classList.remove('hidden');
+    loadStudentOpenElectives();
   } else {
-    tabSelections.className = 'px-5 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2 transition-all';
-    tabSubjects.className = 'px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all';
-    contentSelections.classList.remove('hidden');
-    contentSubjects.classList.add('hidden');
+    if (tabSelections) tabSelections.className = activeBlueClass;
+    if (contentSelections) contentSelections.classList.remove('hidden');
     renderStudentSelections();
   }
 }
@@ -1181,3 +1196,719 @@ function escapeQuote(str) {
   if (!str) return '';
   return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
+
+// =========================================================================
+// OPEN ELECTIVE SELECTION SYSTEM (3rd Year B.Tech)
+// =========================================================================
+let STUDENT_OE_DATA = null;
+let STUDENT_OE_MY = null;
+let PENDING_OE_SELECTIONS = {}; // { [electiveId]: { subjectId, assignmentId } }
+
+async function loadStudentOpenElectives() {
+  const container = document.getElementById('stu-oe-container');
+  if (!container) return;
+
+  try {
+    const [oeRes, myRes] = await Promise.all([
+      api.get('/api/open-electives'),
+      api.get('/api/open-electives/my')
+    ]);
+
+    STUDENT_OE_DATA = oeRes ? oeRes.electives : [];
+    STUDENT_OE_MY = myRes || null;
+
+    // Update nav badge
+    const badge = document.getElementById('stu-oe-badge');
+    if (badge && STUDENT_OE_MY) {
+      if (STUDENT_OE_MY.overall_status === 'REGISTRATION_COMPLETED') {
+        badge.className = 'text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full';
+        badge.innerHTML = '<i class="fa-solid fa-check mr-1"></i>Completed';
+      } else if (STUDENT_OE_MY.total_completed > 0) {
+        badge.className = 'text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full';
+        badge.textContent = `${STUDENT_OE_MY.total_completed} of ${STUDENT_OE_MY.total_required}`;
+      } else {
+        badge.className = 'text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full';
+        badge.textContent = '3rd Year';
+      }
+    }
+
+    renderStudentOpenElectives();
+  } catch (err) {
+    console.error('Failed to load open electives:', err);
+    container.innerHTML = `
+      <div class="p-6 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs">
+        <i class="fa-solid fa-circle-exclamation mr-1"></i> ${err.message || 'Error loading open electives.'}
+      </div>
+    `;
+  }
+}
+
+function renderStudentOpenElectives() {
+  const container = document.getElementById('stu-oe-container');
+  if (!container) return;
+
+  // 1. Eligibility Check (3rd Year Only)
+  if (!STATE.student || STATE.student.academic_year !== 3) {
+    container.innerHTML = `
+      <div class="bg-white rounded-2xl p-10 border border-slate-200 text-center max-w-xl mx-auto shadow-sm space-y-4">
+        <div class="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto text-2xl shadow-inner border border-amber-100">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <div>
+          <h3 class="text-base font-black text-slate-900">Open Elective Selection is Exclusively for 3rd Year Students</h3>
+          <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            Your candidate account is registered under <strong>Year ${STATE.student ? STATE.student.academic_year : 'N/A'}</strong>. Only 3rd Year (B.Tech) students are eligible to participate in Open Elective I & II registrations.
+          </p>
+        </div>
+        <div class="pt-2">
+          <button onclick="switchStudentTab('subjects')" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/25 transition">
+            <i class="fa-solid fa-arrow-left mr-1.5"></i> Go to Core Subjects
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const electives = STUDENT_OE_DATA || [];
+  const myData = STUDENT_OE_MY || { registrations: [], overall_status: 'NOT_STARTED', status_label: 'Not Started' };
+  const registrations = myData.registrations || [];
+  const isCompleted = myData.overall_status === 'REGISTRATION_COMPLETED' || registrations.length >= electives.length;
+
+  // 2. Progression Stepper Header
+  const statusColors = {
+    'NOT_STARTED': 'bg-slate-100 text-slate-700 border-slate-200',
+    'OE_1_COMPLETED': 'bg-amber-100 text-amber-800 border-amber-200',
+    'OE_2_COMPLETED': 'bg-amber-100 text-amber-800 border-amber-200',
+    'PARTIALLY_COMPLETED': 'bg-amber-100 text-amber-800 border-amber-200',
+    'REGISTRATION_COMPLETED': 'bg-emerald-100 text-emerald-800 border-emerald-200'
+  };
+
+  const statusIcons = {
+    'NOT_STARTED': 'fa-hourglass-start',
+    'OE_1_COMPLETED': 'fa-circle-half-stroke text-amber-600',
+    'OE_2_COMPLETED': 'fa-circle-half-stroke text-amber-600',
+    'PARTIALLY_COMPLETED': 'fa-circle-half-stroke text-amber-600',
+    'REGISTRATION_COMPLETED': 'fa-circle-check text-emerald-600'
+  };
+
+  let headerHtml = `
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-indigo-600"></span>
+            <h3 class="text-base font-bold text-slate-900">3rd Year Open Elective Subject & Faculty Selection</h3>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            Every 3rd-year student must select exactly <strong>one subject and one faculty from Open Elective – I</strong> and <strong>one subject and one faculty from Open Elective – II</strong>.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 self-start md:self-auto">
+          <span class="px-3 py-1.5 rounded-full text-xs font-bold border inline-flex items-center gap-1.5 ${statusColors[myData.overall_status] || statusColors.NOT_STARTED}">
+            <i class="fa-solid ${statusIcons[myData.overall_status] || statusIcons.NOT_STARTED}"></i>
+            <span>${myData.status_label || 'Not Started'}</span>
+          </span>
+          <button onclick="loadStudentOpenElectives()" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition" title="Refresh">
+            <i class="fa-solid fa-rotate text-xs"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Candidate Meta Strip -->
+      <div class="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
+        <div>
+          Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; <span class="px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">Year 3 &bull; Sem 6</span>
+        </div>
+        <div class="font-medium text-slate-700">
+          Strict First-Come, First-Served Allocation
+        </div>
+      </div>
+    </div>
+  `;
+
+  // 3. If Both Electives are Confirmed -> Display Official Confirmation Slip Card
+  if (isCompleted) {
+    const oe1Reg = registrations.find(r => r.elective_code === 'OE-1' || r.elective_name.includes('I')) || registrations[0];
+    const oe2Reg = registrations.find(r => r.elective_code === 'OE-2' || r.elective_name.includes('II')) || registrations[1];
+
+    let confirmationHtml = `
+      <div class="space-y-4 max-w-3xl mx-auto">
+        <article id="open-elective-confirmation-card" class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <!-- College Branding Header -->
+          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 text-white">
+            <div class="flex items-center justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <img src="/college_logo.jpg" alt="RGMCET logo" class="h-12 w-12 rounded-lg bg-white object-contain p-1">
+                <div>
+                  <div class="text-[11px] font-black uppercase tracking-wide">Rajeev Gandhi Memorial College of Engineering &amp; Technology</div>
+                  <div class="mt-0.5 text-[10px] font-semibold text-blue-200">Department of Computer Science and Engineering</div>
+                </div>
+              </div>
+              <img src="/cse_logo.png" alt="CSE logo" class="ml-auto hidden h-12 w-12 rounded-lg bg-white object-contain p-1 sm:block">
+            </div>
+            <div class="mt-5 pt-3 border-t border-white/10 flex items-center justify-between">
+              <h4 class="text-sm font-black uppercase tracking-widest text-indigo-200">Official Open Elective Registration Slip</h4>
+              <span class="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                CONFIRMED
+              </span>
+            </div>
+          </div>
+
+          <!-- Student Info Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-5 bg-slate-50/70 border-b border-slate-200 text-xs">
+            <div class="rounded-xl bg-white p-3 border border-slate-200/80">
+              <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Registration Number</div>
+              <div class="mono-font mt-1 font-bold text-slate-900">${STATE.student.reg_no}</div>
+            </div>
+            <div class="rounded-xl bg-white p-3 border border-slate-200/80">
+              <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Student Name</div>
+              <div class="mt-1 font-bold text-slate-900 truncate">${STATE.student.name}</div>
+            </div>
+            <div class="rounded-xl bg-white p-3 border border-slate-200/80">
+              <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Academic Cohort</div>
+              <div class="mt-1 font-bold text-slate-900">Year 3 &bull; Sem 6</div>
+            </div>
+            <div class="rounded-xl bg-white p-3 border border-slate-200/80">
+              <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Section / Group</div>
+              <div class="mt-1 font-bold text-slate-900">${STATE.student.section || 'Group 1'}</div>
+            </div>
+          </div>
+
+          <!-- Confirmed Elective Allocations -->
+          <div class="p-6 space-y-5">
+            <!-- Open Elective I -->
+            ${oe1Reg ? `
+              <div class="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40">
+                <div class="flex items-center justify-between">
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 uppercase tracking-wider">
+                    ${oe1Reg.elective_name}
+                  </span>
+                  <span class="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                    <i class="fa-solid fa-circle-check"></i> Confirmed
+                  </span>
+                </div>
+                <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400">Selected Subject</div>
+                    <div class="text-sm font-bold text-slate-900 mt-0.5">${oe1Reg.subject_name}</div>
+                    <div class="mono-font text-[11px] text-blue-600">${oe1Reg.subject_code}</div>
+                  </div>
+                  <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400">Allocated Faculty</div>
+                    <div class="text-sm font-bold text-indigo-900 mt-0.5">${oe1Reg.faculty_name}</div>
+                    <div class="text-[11px] text-slate-500">${oe1Reg.faculty_designation || 'Faculty Member'}</div>
+                  </div>
+                </div>
+                <div class="mt-3 pt-2 border-t border-indigo-100 text-[10px] text-slate-400 mono-font">
+                  Allocated Timestamp: ${new Date(oe1Reg.registration_timestamp).toLocaleString()}
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- Open Elective II -->
+            ${oe2Reg ? `
+              <div class="p-4 rounded-xl border border-purple-200 bg-purple-50/40">
+                <div class="flex items-center justify-between">
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 uppercase tracking-wider">
+                    ${oe2Reg.elective_name}
+                  </span>
+                  <span class="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                    <i class="fa-solid fa-circle-check"></i> Confirmed
+                  </span>
+                </div>
+                <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400">Selected Subject</div>
+                    <div class="text-sm font-bold text-slate-900 mt-0.5">${oe2Reg.subject_name}</div>
+                    <div class="mono-font text-[11px] text-blue-600">${oe2Reg.subject_code}</div>
+                  </div>
+                  <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400">Allocated Faculty</div>
+                    <div class="text-sm font-bold text-purple-900 mt-0.5">${oe2Reg.faculty_name}</div>
+                    <div class="text-[11px] text-slate-500">${oe2Reg.faculty_designation || 'Faculty Member'}</div>
+                  </div>
+                </div>
+                <div class="mt-3 pt-2 border-t border-purple-100 text-[10px] text-slate-400 mono-font">
+                  Allocated Timestamp: ${new Date(oe2Reg.registration_timestamp).toLocaleString()}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Card Footer -->
+          <div class="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-lock text-slate-400"></i>
+              <span>Permanent Registration. Contact Department Administrator for modifications.</span>
+            </div>
+            <div class="mono-font text-[11px] text-slate-400">
+              Verification ID: OE-${STATE.student.reg_no}-${Date.now().toString(36).toUpperCase()}
+            </div>
+          </div>
+        </article>
+
+        <!-- Actions -->
+        <div class="flex flex-wrap items-center justify-end gap-3 no-print">
+          <button onclick="window.print()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-2 transition">
+            <i class="fa-solid fa-print"></i>
+            <span>Print Slip</span>
+          </button>
+          <button onclick="downloadOpenElectiveScreenshot()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/25 flex items-center gap-2 transition">
+            <i class="fa-solid fa-download"></i>
+            <span>Download Screenshot (PNG)</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = headerHtml + confirmationHtml;
+    return;
+  }
+
+  // 4. Selection Interface: Render Selection Card 1 and Selection Card 2
+  const cardsHtml = electives.map((elective, eIdx) => {
+    const isConfirmed = registrations.find(r => r.elective_id === elective.id);
+    const pending = PENDING_OE_SELECTIONS[elective.id] || { subjectId: null, assignmentId: null };
+    const subjects = elective.subjects || [];
+
+    // Find selected subject's assigned faculties
+    const chosenSubject = subjects.find(s => s.id === pending.subjectId);
+    const assignedFaculties = chosenSubject ? (chosenSubject.faculty_assignments || []) : [];
+
+    return `
+      <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-5 sm:p-6 transition-all">
+        <!-- Card Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg ${isConfirmed ? 'bg-emerald-100 text-emerald-800' : 'bg-indigo-100 text-indigo-800'} flex items-center justify-center font-black text-xs">
+                ${eIdx + 1}
+              </span>
+              <h4 class="text-base font-black text-slate-900">${elective.name}</h4>
+            </div>
+            <p class="text-xs text-slate-500 mt-1">Select one subject, then choose one available faculty member.</p>
+          </div>
+          <div>
+            ${isConfirmed ? `
+              <span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-check"></i> Confirmed & Locked
+              </span>
+            ` : `
+              <span class="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1.5">
+                <i class="fa-solid fa-hourglass-start text-amber-600"></i> Selection Pending
+              </span>
+            `}
+          </div>
+        </div>
+
+        ${isConfirmed ? `
+          <!-- Confirmed View for this elective -->
+          <div class="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 text-xs space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <span class="text-[10px] uppercase font-bold text-slate-500">Selected Subject</span>
+                <div class="text-sm font-bold text-slate-900 mt-0.5">${isConfirmed.subject_name}</div>
+                <div class="mono-font text-[11px] text-blue-600">${isConfirmed.subject_code}</div>
+              </div>
+              <div>
+                <span class="text-[10px] uppercase font-bold text-slate-500">Allocated Faculty</span>
+                <div class="text-sm font-bold text-emerald-900 mt-0.5">${isConfirmed.faculty_name}</div>
+                <div class="text-[11px] text-slate-500">${isConfirmed.faculty_designation || 'Faculty Member'}</div>
+              </div>
+            </div>
+            <div class="pt-2 border-t border-emerald-200/60 text-[10px] text-slate-400">
+              Permanently confirmed on ${new Date(isConfirmed.registration_timestamp).toLocaleString()}
+            </div>
+          </div>
+        ` : `
+          <!-- Active Interactive Selection Steps -->
+          <div class="space-y-5">
+            <!-- Step 1: Select Subject -->
+            <div>
+              <div class="flex items-center gap-2 mb-2.5">
+                <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[11px]">1</span>
+                <label class="text-xs font-bold text-slate-800 uppercase tracking-wider">Step 1: Choose Elective Subject</label>
+              </div>
+
+              ${subjects.length === 0 ? `
+                <div class="p-4 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                  No subjects configured for this open elective yet.
+                </div>
+              ` : `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  ${subjects.map(sub => {
+                    const isSubSelected = pending.subjectId === sub.id;
+                    return `
+                      <div 
+                        onclick="selectOESubject(${elective.id}, ${sub.id})"
+                        class="p-4 rounded-xl border transition-all cursor-pointer text-left flex flex-col justify-between ${isSubSelected 
+                          ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25 shadow-sm' 
+                          : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50/80'}">
+                        <div>
+                          <div class="flex items-center justify-between gap-2">
+                            <span class="mono-font text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">${sub.subject_code || 'OE'}</span>
+                            <div class="w-4 h-4 rounded-full border-2 flex items-center justify-center ${isSubSelected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}">
+                              ${isSubSelected ? '<i class="fa-solid fa-check text-[9px]"></i>' : ''}
+                            </div>
+                          </div>
+                          <h5 class="text-xs font-bold text-slate-900 mt-2 line-clamp-2">${sub.subject_name}</h5>
+                          ${sub.description ? `<p class="text-[11px] text-slate-500 mt-1 line-clamp-2">${sub.description}</p>` : ''}
+                        </div>
+                        <div class="mt-3 pt-2 border-t border-slate-100 text-[10px] text-indigo-700 font-semibold flex items-center gap-1">
+                          <span>${sub.faculty_assignments ? sub.faculty_assignments.length : 0} faculties available</span>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+
+            <!-- Step 2: Select Faculty for Selected Subject -->
+            ${pending.subjectId ? `
+              <div class="pt-2 border-t border-slate-100">
+                <div class="flex items-center justify-between gap-2 mb-2.5">
+                  <div class="flex items-center gap-2">
+                    <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[11px]">2</span>
+                    <label class="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Step 2: Choose Faculty for <span class="text-indigo-600 font-black">${chosenSubject ? chosenSubject.subject_name : 'Selected Subject'}</span>
+                    </label>
+                  </div>
+                  <span class="text-[11px] text-slate-400 font-medium">Click oval to pick</span>
+                </div>
+
+                ${assignedFaculties.length === 0 ? `
+                  <div class="p-4 text-center text-xs text-amber-700 bg-amber-50 rounded-xl border border-amber-200">
+                    No faculty assigned to this subject yet. Please contact the administrator or select another subject.
+                  </div>
+                ` : `
+                  <div class="space-y-2.5">
+                    ${assignedFaculties.map(fa => {
+                      const isFull = fa.availability_status === 'FULL' || fa.is_full;
+                      const isFillingFast = fa.availability_status === 'FILLING_FAST';
+                      const isFacSelected = pending.assignmentId === fa.assignment_id;
+
+                      return `
+                        <div 
+                          onclick="${!isFull ? `selectOEFaculty(${elective.id}, ${fa.assignment_id})` : ''}"
+                          class="p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${isFacSelected
+                            ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/25 cursor-pointer'
+                            : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-70 cursor-not-allowed' : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50 cursor-pointer shadow-sm')}">
+                          
+                          <div class="flex items-center gap-3 min-w-0">
+                            <!-- Radio Oval -->
+                            <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${isFacSelected
+                              ? 'border-indigo-600 bg-indigo-600 text-white'
+                              : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
+                              ${isFacSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
+                            </div>
+
+                            <div class="min-w-0">
+                              <div class="text-xs font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
+                                <span>${fa.faculty_name}</span>
+                                <span class="w-2 h-2 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500')} flex-shrink-0"></span>
+                              </div>
+                              <div class="text-[11px] text-slate-500 truncate mt-0.5">
+                                ${fa.designation || 'Faculty'} &bull; ${fa.qualification || 'B.Tech / M.Tech / Ph.D'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <!-- Availability Indicator Badge (No numeric seats exposed) -->
+                          <div class="flex items-center gap-2 flex-shrink-0">
+                            ${isFull ? `
+                              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                                <span>Faculty Capacity Reached</span>
+                              </span>
+                            ` : (isFillingFast ? `
+                              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                <span>Filling Fast</span>
+                              </span>
+                            ` : `
+                              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                <span>Available</span>
+                              </span>
+                            `)}
+                          </div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                `}
+              </div>
+            ` : `
+              <div class="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-xs text-slate-500 text-center">
+                <i class="fa-solid fa-arrow-up text-indigo-500 mr-1.5"></i> Please select a subject above to reveal the available faculty members.
+              </div>
+            `}
+
+            <!-- Step 3: Confirm Button for this Elective -->
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <div class="text-xs text-slate-500">
+                ${pending.assignmentId 
+                  ? '<span class="text-indigo-700 font-bold"><i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> Faculty selected. Ready to confirm.</span>'
+                  : 'Complete both Step 1 and Step 2 to confirm this elective.'}
+              </div>
+              <button 
+                ${!pending.assignmentId ? 'disabled' : ''}
+                onclick="confirmOESelection(${elective.id})"
+                class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${pending.assignmentId 
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 cursor-pointer' 
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
+                <i class="fa-solid fa-lock"></i>
+                <span>Confirm ${elective.name}</span>
+              </button>
+            </div>
+          </div>
+        `}
+      </section>
+    `;
+  }).join('');
+
+  // Sticky bottom batch bar if user has choices marked across electives
+  const unconfirmedElectives = electives.filter(e => !registrations.some(r => r.elective_id === e.id));
+  const readyToConfirmCount = unconfirmedElectives.filter(e => PENDING_OE_SELECTIONS[e.id] && PENDING_OE_SELECTIONS[e.id].assignmentId).length;
+  const isAllReady = unconfirmedElectives.length > 0 && readyToConfirmCount === unconfirmedElectives.length;
+
+  let bottomBarHtml = '';
+  if (unconfirmedElectives.length > 1) {
+    bottomBarHtml = `
+      <div class="sticky bottom-4 z-20 mt-6 bg-white/95 backdrop-blur-md rounded-2xl border-2 ${isAllReady ? 'border-emerald-500 shadow-2xl shadow-emerald-500/20' : 'border-slate-300 shadow-xl'} p-5 transition-all">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h4 class="text-sm font-black text-slate-900 flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full ${isAllReady ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-600'}"></span>
+              <span>Open Elective Registration Summary (${readyToConfirmCount} of ${unconfirmedElectives.length} Marked)</span>
+            </h4>
+            <p class="text-xs text-slate-500 mt-0.5">
+              ${isAllReady ? '🎉 Both Open Electives are marked! Click to lock and finalize both registrations.' : 'Mark your preferred subject and faculty for both Open Elective I & II.'}
+            </p>
+          </div>
+          <button 
+            ${!isAllReady ? 'disabled' : ''}
+            onclick="confirmAllOESelectionsBatch()"
+            class="px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${isAllReady 
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 cursor-pointer' 
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300'}">
+            <i class="fa-solid fa-check-double"></i>
+            <span>Submit & Confirm Both Electives</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = headerHtml + `<div class="space-y-6">${cardsHtml}</div>` + bottomBarHtml;
+}
+
+function selectOESubject(electiveId, subjectId) {
+  if (!PENDING_OE_SELECTIONS[electiveId]) {
+    PENDING_OE_SELECTIONS[electiveId] = { subjectId: null, assignmentId: null };
+  }
+  PENDING_OE_SELECTIONS[electiveId].subjectId = subjectId;
+  PENDING_OE_SELECTIONS[electiveId].assignmentId = null; // reset faculty choice if subject changed
+  renderStudentOpenElectives();
+}
+
+function selectOEFaculty(electiveId, assignmentId) {
+  if (!PENDING_OE_SELECTIONS[electiveId]) {
+    PENDING_OE_SELECTIONS[electiveId] = { subjectId: null, assignmentId: null };
+  }
+  PENDING_OE_SELECTIONS[electiveId].assignmentId = assignmentId;
+  renderStudentOpenElectives();
+}
+
+async function confirmOESelection(electiveId) {
+  const pending = PENDING_OE_SELECTIONS[electiveId];
+  if (!pending || !pending.subjectId || !pending.assignmentId) {
+    showToast('Please select both a subject and an available faculty first.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await api.post('/api/open-electives/reserve', {
+      elective_id: electiveId,
+      subject_id: pending.subjectId,
+      faculty_assignment_id: pending.assignmentId
+    });
+
+    if (res && res.success) {
+      showToast(res.message || 'Open elective selection confirmed successfully!', 'success');
+      delete PENDING_OE_SELECTIONS[electiveId];
+      await loadStudentOpenElectives();
+    }
+  } catch (err) {
+    showToast(err.message || 'Could not confirm selection.', 'error');
+    await loadStudentOpenElectives(); // refresh live status
+  }
+}
+
+async function confirmAllOESelectionsBatch() {
+  const electives = STUDENT_OE_DATA || [];
+  const myData = STUDENT_OE_MY || { registrations: [] };
+  const registrations = myData.registrations || [];
+  const unconfirmed = electives.filter(e => !registrations.some(r => r.elective_id === e.id));
+
+  const selectionsToSubmit = [];
+  for (const e of unconfirmed) {
+    const pending = PENDING_OE_SELECTIONS[e.id];
+    if (pending && pending.subjectId && pending.assignmentId) {
+      selectionsToSubmit.push({
+        elective_id: e.id,
+        subject_id: pending.subjectId,
+        faculty_assignment_id: pending.assignmentId
+      });
+    }
+  }
+
+  if (selectionsToSubmit.length === 0) {
+    showToast('Please select both subjects and faculties before submitting.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await api.post('/api/open-electives/reserve-batch', { selections: selectionsToSubmit });
+    if (res && res.success) {
+      showToast('All open elective selections confirmed successfully!', 'success');
+      PENDING_OE_SELECTIONS = {};
+      await loadStudentOpenElectives();
+    }
+  } catch (err) {
+    showToast(err.message || 'Could not confirm open electives.', 'error');
+    await loadStudentOpenElectives();
+  }
+}
+
+async function downloadOpenElectiveScreenshot() {
+  const cardEl = document.getElementById('open-elective-confirmation-card');
+  if (!cardEl || !STATE.student) {
+    showToast('Confirmation card element not found.', 'error');
+    return;
+  }
+
+  const safeName = `${STATE.student.reg_no}-open-electives-confirmation`.replace(/[^a-z0-9_-]/gi, '-');
+
+  // 1. Try html2canvas DOM capture
+  if (typeof html2canvas === 'function') {
+    try {
+      const capturedCanvas = await html2canvas(cardEl, {
+        scale: 2.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      const blob = await new Promise(resolve => capturedCanvas.toBlob(resolve, 'image/png'));
+      if (blob) {
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `${safeName}.png`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        showToast('Open Elective confirmation screenshot downloaded!', 'success');
+        return;
+      }
+    } catch (domErr) {
+      console.warn('html2canvas capture fallback to 2D canvas:', domErr);
+    }
+  }
+
+  // 2. High-resolution standalone 2D canvas fallback
+  try {
+    const [collegeLogo, departmentLogo] = await Promise.all([
+      loadScreenshotImage('/college_logo.jpg'),
+      loadScreenshotImage('/cse_logo.png')
+    ]);
+
+    const myData = STUDENT_OE_MY || { registrations: [] };
+    const regs = myData.registrations || [];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1600;
+    canvas.height = 1260;
+    const context = canvas.getContext('2d');
+
+    context.fillStyle = '#f8fafc';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    drawScreenshotRoundedRect(context, 56, 48, 1488, 1164, 34, '#ffffff');
+    context.strokeStyle = '#dbe3ee';
+    context.lineWidth = 2;
+    context.stroke();
+
+    context.save();
+    context.beginPath();
+    context.roundRect(56, 48, 1488, 292, 34);
+    context.clip();
+    const grad = context.createLinearGradient(56, 48, 1544, 340);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(0.5, '#1e1b4b');
+    grad.addColorStop(1, '#0f172a');
+    context.fillStyle = grad;
+    context.fillRect(56, 48, 1488, 292);
+    context.restore();
+
+    drawScreenshotRoundedRect(context, 104, 100, 144, 144, 18, '#ffffff');
+    drawScreenshotRoundedRect(context, 1352, 100, 144, 144, 18, '#ffffff');
+    context.drawImage(collegeLogo, 118, 114, 116, 116);
+    context.drawImage(departmentLogo, 1366, 114, 116, 116);
+
+    context.textAlign = 'center';
+    context.fillStyle = '#ffffff';
+    context.font = '800 25px Arial, sans-serif';
+    context.fillText('RAJEEV GANDHI MEMORIAL COLLEGE OF', 800, 124);
+    context.fillText('ENGINEERING & TECHNOLOGY', 800, 160);
+    context.fillStyle = '#c7d2fe';
+    context.font = '600 19px Arial, sans-serif';
+    context.fillText('Department of Computer Science and Engineering', 800, 198);
+    context.fillStyle = '#ffffff';
+    context.font = '800 27px Arial, sans-serif';
+    context.fillText('OPEN ELECTIVE SELECTION CONFIRMATION SLIP', 800, 278);
+
+    const fields = [
+      { label: 'REGISTRATION NUMBER', value: STATE.student.reg_no, x: 112, y: 390 },
+      { label: 'STUDENT NAME', value: STATE.student.name, x: 832, y: 390 },
+      { label: 'OPEN ELECTIVE – I', value: regs[0] ? `${regs[0].subject_name} (${regs[0].subject_code})\nFaculty: ${regs[0].faculty_name}` : 'Not Selected', x: 112, y: 560 },
+      { label: 'OPEN ELECTIVE – II', value: regs[1] ? `${regs[1].subject_name} (${regs[1].subject_code})\nFaculty: ${regs[1].faculty_name}` : 'Not Selected', x: 832, y: 560 },
+      { label: 'REGISTRATION STATUS', value: 'CONFIRMED & LOCKED', x: 112, y: 770, confirmed: true },
+      { label: 'ACADEMIC COHORT', value: '3rd Year B.Tech • Semester 6', x: 832, y: 770 }
+    ];
+
+    fields.forEach(field => {
+      drawScreenshotRoundedRect(context, field.x, field.y, 656, 150, 18, field.confirmed ? '#ecfdf5' : '#f8fafc');
+      context.textAlign = 'left';
+      context.fillStyle = field.confirmed ? '#047857' : '#64748b';
+      context.font = '700 17px Arial, sans-serif';
+      context.fillText(field.label, field.x + 26, field.y + 40);
+      context.fillStyle = field.confirmed ? '#065f46' : '#0f172a';
+      context.font = '700 23px Arial, sans-serif';
+      drawScreenshotWrappedText(context, field.value, field.x + 26, field.y + 80, 600, 30);
+    });
+
+    context.fillStyle = '#64748b';
+    context.textAlign = 'center';
+    context.font = '500 16px Arial, sans-serif';
+    context.fillText('Official selection confirmation • RGMCET CSE Open Electives', 800, 1064);
+
+    const png = await new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('Image generation failed.'));
+      }, 'image/png');
+    });
+
+    const objectUrl = URL.createObjectURL(png);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `${safeName}.png`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch (canvasErr) {
+    console.error('Canvas screenshot error:', canvasErr);
+    window.print();
+  }
+}
+

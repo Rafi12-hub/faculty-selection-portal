@@ -179,12 +179,17 @@
       </div>
 
       <!-- Student Navigation Tabs -->
-      <div class="flex items-center border-b border-slate-200 gap-2">
-        <button onclick="switchStudentTab('subjects')" id="stu-tab-subjects" class="px-5 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2 transition-all">
+      <div class="flex items-center border-b border-slate-200 gap-2 overflow-x-auto">
+        <button onclick="switchStudentTab('subjects')" id="stu-tab-subjects" class="px-5 py-3 text-sm font-semibold border-b-2 border-blue-600 text-blue-600 flex items-center gap-2 transition-all whitespace-nowrap">
           <i class="fa-solid fa-book-open"></i>
           <span>Eligible Subjects & Faculty Selection</span>
         </button>
-        <button onclick="switchStudentTab('selections')" id="stu-tab-selections" class="px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all">
+        <button onclick="switchStudentTab('open-electives')" id="stu-tab-open-electives" class="px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all whitespace-nowrap">
+          <i class="fa-solid fa-shapes text-indigo-600"></i>
+          <span>My Open Electives</span>
+          <span id="stu-oe-badge" class="text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full">3rd Year</span>
+        </button>
+        <button onclick="switchStudentTab('selections')" id="stu-tab-selections" class="px-5 py-3 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2 transition-all whitespace-nowrap">
           <i class="fa-solid fa-circle-check"></i>
           <span>My Confirmed Selections</span>
           <span id="stu-confirmed-badge" class="text-xs bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">0</span>
@@ -227,16 +232,27 @@
           <!-- Dynamic Confirmed Selections Table -->
         </div>
       </div>
+
+      <!-- Student Tab Content: Open Electives (3rd Year) -->
+      <div id="stu-content-open-electives" class="hidden space-y-6">
+        <div id="stu-oe-container">
+          <!-- Rendered dynamically by student.js -->
+        </div>
+      </div>
     </div>
 
     <!-- 3. ADMINISTRATOR PORTAL VIEW -->
     <div id="view-admin" class="hidden space-y-6">
-      <!-- Admin Top Nav Bar with Exactly 9 Required Tabs -->
+      <!-- Admin Top Nav Bar with Open Electives Management -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 overflow-x-auto">
         <nav class="flex items-center gap-1 min-w-max" id="admin-nav-bar">
           <button onclick="switchAdminTab('dashboard')" id="adm-nav-dashboard" class="px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 bg-blue-600 text-white shadow-sm">
             <i class="fa-solid fa-chart-pie"></i>
             <span>Dashboard</span>
+          </button>
+          <button onclick="switchAdminTab('open-electives')" id="adm-nav-open-electives" class="px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 text-slate-600 hover:bg-slate-100">
+            <i class="fa-solid fa-shapes text-indigo-500"></i>
+            <span>Open Elective Management</span>
           </button>
           <button onclick="switchAdminTab('students')" id="adm-nav-students" class="px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 text-slate-600 hover:bg-slate-100">
             <i class="fa-solid fa-users"></i>
@@ -298,8 +314,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
   <!-- App Scripts -->
-  <script src="/js/app.js?v=3.6"></script>
-  <script src="/js/student.js?v=3.6"></script>
-  <script src="/js/admin.js?v=3.6"></script>
+  <script src="/js/app.js?v=4.2"></script>
+  <script src="/js/student.js?v=4.2"></script>
+  <script src="/js/admin.js?v=4.2"></script>
 </body>
 </html>

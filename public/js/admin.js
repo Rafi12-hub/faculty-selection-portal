@@ -11,10 +11,12 @@ let ADMIN_DATA = {
   students: [],
   rounds: [],
   selections: [],
-  auditLogs: []
+  auditLogs: [],
+  openElectives: null,
+  oeReports: null
 };
 
-// Switch between the 9 Admin Tabs
+// Switch between Admin Tabs (including Open Electives Management)
 function switchAdminTab(tabName) {
   STATE.activeAdminTab = tabName;
 
@@ -38,6 +40,7 @@ function switchAdminTab(tabName) {
   // Route to corresponding tab loader
   switch (tabName) {
     case 'dashboard': loadAdminDashboard(); break;
+    case 'open-electives': loadAdminOpenElectives(); break;
     case 'students': loadAdminStudents(); break;
     case 'faculty': loadAdminFaculty(); break;
     case 'subjects': loadAdminSubjects(); break;
@@ -48,6 +51,7 @@ function switchAdminTab(tabName) {
     case 'audit': loadAdminAudit(); break;
   }
 }
+window.switchAdminTab = switchAdminTab;
 
 // =========================================================================
 // 1. DASHBOARD
@@ -3029,3 +3033,1265 @@ async function submitClearSelections() {
     }
   }
 }
+
+
+// =========================================================================
+// 10. OPEN ELECTIVES MANAGEMENT (3RD YEAR B.TECH)
+// =========================================================================
+
+let CURRENT_OE_SUBTAB = 'config'; // 'config' | 'reports' | 'incomplete' | 'demand'
+let CURRENT_OE_REPORT_FILTERS = {
+  search: '',
+  electiveId: 'ALL',
+  subjectId: 'ALL',
+  facultyId: 'ALL'
+};
+let CURRENT_OE_INCOMPLETE_SEARCH = '';
+
+async function loadAdminOpenElectives(subTab = CURRENT_OE_SUBTAB) {
+  CURRENT_OE_SUBTAB = subTab;
+  const container = document.getElementById('admin-tab-content');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="flex items-center justify-center p-16 text-slate-400">
+      <i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-600"></i>
+      <span class="ml-3 text-sm font-semibold text-slate-600">Loading Open Elective Management Engine...</span>
+    </div>
+  `;
+
+  try {
+    const [oeRes, repRes, facRes] = await Promise.all([
+      api.get('/api/open-electives'),
+      api.get('/api/open-electives/reports'),
+      (ADMIN_DATA.faculty && ADMIN_DATA.faculty.length > 0) ? Promise.resolve({ success: true, faculty: ADMIN_DATA.faculty }) : api.get('/api/faculty')
+    ]);
+
+    ADMIN_DATA.openElectives = (oeRes && oeRes.success) ? oeRes.electives : [];
+    ADMIN_DATA.oeReports = (repRes && repRes.success) ? repRes : { stats: {}, registrations: [], faculty_allocations: [], subject_allocations: [], incomplete_students: [] };
+    if (facRes && facRes.faculty) {
+      ADMIN_DATA.faculty = facRes.faculty;
+    }
+
+    renderAdminOpenElectives();
+  } catch (err) {
+    console.error('Error loading Open Elective admin:', err);
+    container.innerHTML = `
+      <div class="bg-rose-50 border border-rose-200 text-rose-700 p-6 rounded-2xl">
+        <h4 class="font-bold text-sm">Failed to load Open Elective Management</h4>
+        <p class="text-xs mt-1">${err.message || 'Server error occurred'}</p>
+        <button onclick="loadAdminOpenElectives('${subTab}')" class="mt-4 px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-semibold">Try Again</button>
+      </div>
+    `;
+  }
+}
+
+function switchOESubTab(tab) {
+  CURRENT_OE_SUBTAB = tab;
+  renderAdminOpenElectives();
+}
+
+function renderAdminOpenElectives() {
+  const container = document.getElementById('admin-tab-content');
+  if (!container) return;
+
+  const electives = ADMIN_DATA.openElectives || [];
+  const rep = ADMIN_DATA.oeReports || { stats: {}, registrations: [], faculty_allocations: [], subject_allocations: [], incomplete_students: [] };
+  const stats = rep.stats || {};
+
+  // Summary Metrics
+  const totalElectives = electives.length;
+  let totalSubjects = 0;
+  let totalAssignments = 0;
+  let totalCapacity = 0;
+  electives.forEach(e => {
+    (e.subjects || []).forEach(s => {
+      totalSubjects++;
+      (s.faculty_assignments || []).forEach(fa => {
+        totalAssignments++;
+        totalCapacity += (fa.max_capacity || 0);
+      });
+    });
+  });
+
+  const total3rdYear = stats.total_3rd_year || 0;
+  const completedCount = stats.completed_count || 0;
+  const partialCount = stats.partially_completed_count || 0;
+  const notStartedCount = stats.not_started_count || 0;
+  const totalRegs = (rep.registrations || []).length;
+
+  container.innerHTML = `
+    <div class="space-y-6">
+      <!-- Top Title & Navigation Bar -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-indigo-600"></span>
+            <h3 class="text-base font-bold text-slate-900">Open Elective Subject & Faculty Selection (3rd Year)</h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              B.Tech III-II (Sem 6)
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            Configure Open Elective I & II courses, dynamically map faculty with independent capacities, monitor atomic allocations, and export audit reports.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="openAddOESubjectModal()" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all">
+            <i class="fa-solid fa-plus"></i>
+            <span>Add Subject</span>
+          </button>
+          <button onclick="openAssignOEFacultyModal()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all">
+            <i class="fa-solid fa-user-plus"></i>
+            <span>Assign Faculty</span>
+          </button>
+          <button onclick="loadAdminOpenElectives(CURRENT_OE_SUBTAB)" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all">
+            <i class="fa-solid fa-rotate"></i>
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Overview Stats Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">Active Electives</div>
+          <div class="text-xl font-bold text-slate-900 mt-1">${totalElectives}</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">OE-I & OE-II</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">Subjects / Faculty</div>
+          <div class="text-xl font-bold text-indigo-600 mt-1">${totalSubjects} <span class="text-sm font-normal text-slate-400">/ ${totalAssignments}</span></div>
+          <div class="text-[11px] text-slate-400 mt-0.5">${totalCapacity} Total Seats</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">Total 3rd Year</div>
+          <div class="text-xl font-bold text-slate-900 mt-1">${total3rdYear}</div>
+          <div class="text-[11px] text-slate-400 mt-0.5">Eligible Cohort</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-sm">
+          <div class="text-xs font-medium text-emerald-700">Both Completed</div>
+          <div class="text-xl font-bold text-emerald-600 mt-1">${completedCount}</div>
+          <div class="text-[11px] text-emerald-600 mt-0.5">${total3rdYear ? Math.round((completedCount/total3rdYear)*100) : 0}% Registered</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm">
+          <div class="text-xs font-medium text-amber-700">Pending / Incomplete</div>
+          <div class="text-xl font-bold text-amber-600 mt-1">${partialCount + notStartedCount}</div>
+          <div class="text-[11px] text-amber-600 mt-0.5">${partialCount} partial, ${notStartedCount} unstarted</div>
+        </div>
+      </div>
+
+      <!-- Sub-Tabs Navigation Pills -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-1.5 flex items-center gap-1 overflow-x-auto">
+        <button onclick="switchOESubTab('config')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${CURRENT_OE_SUBTAB === 'config' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+          <i class="fa-solid fa-sitemap"></i>
+          <span>Electives & Subject Mapping</span>
+          <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${CURRENT_OE_SUBTAB === 'config' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'}">${totalSubjects}</span>
+        </button>
+        <button onclick="switchOESubTab('reports')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${CURRENT_OE_SUBTAB === 'reports' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+          <i class="fa-solid fa-file-invoice"></i>
+          <span>Registration Reports</span>
+          <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${CURRENT_OE_SUBTAB === 'reports' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'}">${totalRegs}</span>
+        </button>
+        <button onclick="switchOESubTab('incomplete')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${CURRENT_OE_SUBTAB === 'incomplete' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+          <i class="fa-solid fa-user-clock text-amber-500"></i>
+          <span>Incomplete Students</span>
+          <span class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${CURRENT_OE_SUBTAB === 'incomplete' ? 'bg-indigo-700 text-white' : 'bg-amber-100 text-amber-800'}">${partialCount + notStartedCount}</span>
+        </button>
+        <button onclick="switchOESubTab('demand')" class="px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${CURRENT_OE_SUBTAB === 'demand' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}">
+          <i class="fa-solid fa-chart-column"></i>
+          <span>Capacity & Demand Analysis</span>
+        </button>
+      </div>
+
+      <!-- Tab Content Mount -->
+      <div id="oe-subtab-container">
+        ${renderOECurrentSubView()}
+      </div>
+    </div>
+  `;
+}
+
+function renderOECurrentSubView() {
+  switch (CURRENT_OE_SUBTAB) {
+    case 'config': return renderOEConfigView();
+    case 'reports': return renderOEReportsView();
+    case 'incomplete': return renderOEIncompleteView();
+    case 'demand': return renderOEDemandView();
+    default: return renderOEConfigView();
+  }
+}
+
+// -------------------------------------------------------------------------
+// Sub-view 1: Electives & Subject Mapping
+// -------------------------------------------------------------------------
+function renderOEConfigView() {
+  const electives = ADMIN_DATA.openElectives || [];
+  if (electives.length === 0) {
+    return `
+      <div class="bg-white p-12 text-center rounded-2xl border border-slate-200 shadow-sm">
+        <i class="fa-solid fa-shapes text-4xl text-slate-300 mb-3"></i>
+        <h4 class="text-sm font-bold text-slate-800">No Open Electives Configured</h4>
+        <p class="text-xs text-slate-500 mt-1">Initialize Open Elective I & II to start offering courses to 3rd year students.</p>
+        <button onclick="openAddOEElectiveModal()" class="mt-4 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-sm">
+          + Create Open Elective
+        </button>
+      </div>
+    `;
+  }
+
+  let html = '<div class="space-y-6">';
+
+  electives.forEach((el, elIdx) => {
+    const subjects = el.subjects || [];
+    let elTotalAllocated = 0;
+    let elTotalCap = 0;
+    subjects.forEach(s => {
+      (s.faculty_assignments || []).forEach(fa => {
+        elTotalAllocated += (fa.allocated_count || 0);
+        elTotalCap += (fa.max_capacity || 0);
+      });
+    });
+
+    html += `
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <!-- Elective Group Header -->
+        <div class="p-5 bg-gradient-to-r from-slate-50 to-indigo-50/30 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+              OE${elIdx + 1}
+            </span>
+            <div>
+              <div class="flex items-center gap-2">
+                <h4 class="text-base font-bold text-slate-900">${el.name}</h4>
+                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold ${el.is_active ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-200 text-slate-600'}">
+                  ${el.is_active ? 'ACTIVE & OPEN' : 'INACTIVE'}
+                </span>
+                <span class="text-xs text-slate-400">&bull;</span>
+                <span class="text-xs text-slate-600 font-medium">Branch: ${el.branch || 'CSE'} | Academic Year: ${el.academic_year === 3 ? '3rd Year (III-II)' : 'Year ' + el.academic_year}</span>
+              </div>
+              <div class="text-xs text-slate-500 mt-0.5">
+                ${subjects.length} Subjects Offered &bull; ${elTotalAllocated} / ${elTotalCap} Seats Allocated
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button onclick="toggleOEElectiveStatus(${el.id}, ${el.is_active})" class="px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all ${el.is_active ? 'border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100' : 'border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}">
+              <i class="fa-solid ${el.is_active ? 'fa-pause' : 'fa-play'} mr-1"></i>
+              ${el.is_active ? 'Pause Elective' : 'Activate Elective'}
+            </button>
+            <button onclick="openAddOESubjectModal(${el.id})" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-1.5 transition-all">
+              <i class="fa-solid fa-plus"></i>
+              <span>Add Subject</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Subjects Under this Elective -->
+        <div class="p-5 space-y-4">
+    `;
+
+    if (subjects.length === 0) {
+      html += `
+        <div class="p-8 text-center border-2 border-dashed border-slate-200 rounded-xl">
+          <p class="text-xs text-slate-400">No subjects currently mapped under ${el.name}.</p>
+          <button onclick="openAddOESubjectModal(${el.id})" class="mt-2 text-xs text-indigo-600 hover:text-indigo-800 font-bold">
+            + Add First Subject
+          </button>
+        </div>
+      `;
+    } else {
+      subjects.forEach(sub => {
+        const assignments = sub.faculty_assignments || [];
+        let subAllocated = 0;
+        let subCap = 0;
+        assignments.forEach(fa => {
+          subAllocated += (fa.allocated_count || 0);
+          subCap += (fa.max_capacity || 0);
+        });
+
+        html += `
+          <div class="border border-slate-200 rounded-xl p-4 bg-white hover:border-indigo-200 transition-all shadow-xs">
+            <!-- Subject Row Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 mono-font text-[11px] font-semibold">
+                    ${sub.subject_code || 'OE-SUB'}
+                  </span>
+                  <h5 class="font-bold text-sm text-slate-900">${sub.subject_name}</h5>
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${sub.is_active ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'}">
+                    ${sub.is_active ? 'Active' : 'Disabled'}
+                  </span>
+                </div>
+                ${sub.description ? `<p class="text-xs text-slate-500 mt-1">${sub.description}</p>` : ''}
+              </div>
+
+              <!-- Subject Actions -->
+              <div class="flex items-center gap-1.5 self-end sm:self-auto">
+                <span class="text-xs font-semibold text-slate-600 mr-2">
+                  Total Allocated: <strong class="text-slate-900">${subAllocated}</strong> / ${subCap}
+                </span>
+                <button onclick="openAssignOEFacultyModal(${sub.id}, '${encodeURIComponent(sub.subject_name)}')" class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all" title="Assign Faculty">
+                  <i class="fa-solid fa-user-plus text-[11px]"></i>
+                  <span>Assign Faculty</span>
+                </button>
+                <button onclick="openEditOESubjectModal(${sub.id})" class="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all" title="Edit Subject">
+                  <i class="fa-solid fa-pen text-xs"></i>
+                </button>
+                <button onclick="deleteOESubject(${sub.id}, '${encodeURIComponent(sub.subject_name)}')" class="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-all" title="Delete Subject">
+                  <i class="fa-solid fa-trash-can text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Assigned Faculties List -->
+            <div class="mt-3">
+              <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Assigned Faculties & Capacities:</div>
+        `;
+
+        if (assignments.length === 0) {
+          html += `
+            <div class="p-3 bg-amber-50/50 border border-amber-200 rounded-lg text-xs text-amber-700 flex items-center justify-between">
+              <span><i class="fa-solid fa-circle-exclamation mr-1"></i> No faculty assigned to this subject yet. Students will not be able to choose this subject until at least one faculty is assigned.</span>
+              <button onclick="openAssignOEFacultyModal(${sub.id}, '${encodeURIComponent(sub.subject_name)}')" class="text-xs font-bold text-amber-800 underline ml-2">Assign Now</button>
+            </div>
+          `;
+        } else {
+          html += '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">';
+          assignments.forEach(fa => {
+            const occ = fa.occupancy_rate || 0;
+            const isFull = fa.color === 'red' || fa.available_seats === 0;
+            const isYellow = fa.color === 'yellow';
+
+            let indicatorBg = 'bg-emerald-500';
+            let badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            if (isFull) {
+              indicatorBg = 'bg-rose-500';
+              badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+            } else if (isYellow) {
+              indicatorBg = 'bg-amber-500';
+              badgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+            }
+
+            html += `
+              <div class="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between gap-2.5">
+                <div>
+                  <div class="flex items-start justify-between gap-1">
+                    <div class="font-bold text-xs text-slate-900">${fa.faculty_name}</div>
+                    <div class="flex items-center gap-1">
+                      <button onclick="openEditOECapacityModal(${fa.assignment_id}, ${fa.max_capacity}, ${fa.allocated_count})" class="p-1 text-slate-400 hover:text-blue-600 rounded" title="Edit Capacity">
+                        <i class="fa-solid fa-pen-to-square text-[11px]"></i>
+                      </button>
+                      <button onclick="deleteOEAssignment(${fa.assignment_id}, '${encodeURIComponent(fa.faculty_name)}')" class="p-1 text-slate-400 hover:text-rose-600 rounded" title="Remove Assignment">
+                        <i class="fa-solid fa-trash-can text-[11px]"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="text-[11px] text-slate-500">${fa.department || 'CSE'} &bull; ${fa.faculty_code || 'FAC'}</div>
+                </div>
+
+                <div>
+                  <div class="flex items-center justify-between text-xs mb-1">
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeClass}">
+                      <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
+                      ${fa.status_label || (isFull ? 'Full' : (isYellow ? 'Filling Fast' : 'Available'))}
+                    </span>
+                    <span class="font-bold text-slate-700 text-xs">
+                      ${fa.allocated_count} / ${fa.max_capacity} <span class="text-[10px] text-slate-400 font-normal">(${fa.available_seats} left)</span>
+                    </span>
+                  </div>
+
+                  <!-- Mini progress bar -->
+                  <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div class="h-full ${indicatorBg} transition-all duration-300" style="width: ${Math.min(100, occ)}%"></div>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+        }
+
+        html += `
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+  });
+
+  html += '</div>';
+  return html;
+}
+
+// -------------------------------------------------------------------------
+// Sub-view 2: Registration Reports
+// -------------------------------------------------------------------------
+function renderOEReportsView() {
+  const rep = ADMIN_DATA.oeReports || {};
+  const registrations = rep.registrations || [];
+  const electives = ADMIN_DATA.openElectives || [];
+
+  return `
+    <div class="space-y-4">
+      <!-- Filter & Search Toolbar -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="flex items-center gap-2 flex-1 flex-wrap">
+          <div class="relative flex-1 min-w-[200px]">
+            <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="oe-report-search" oninput="filterOEReports()" placeholder="Search student name or registration number..." value="${CURRENT_OE_REPORT_FILTERS.search}" class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+          </div>
+          <select id="oe-report-filter-elective" onchange="filterOEReports()" class="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+            <option value="ALL">All Electives</option>
+            ${electives.map(e => `<option value="${e.name}" ${CURRENT_OE_REPORT_FILTERS.electiveId === e.name ? 'selected' : ''}>${e.name}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button onclick="exportOEReportsToCSV()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all">
+            <i class="fa-solid fa-file-excel"></i>
+            <span>Export to CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Registrations Data Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div class="text-xs font-bold text-slate-700">
+            Total Confirmed Selections: <span id="oe-report-count" class="text-indigo-600 font-extrabold">${registrations.length}</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Strict Server-side First-Come First-Served Records</div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+              <tr>
+                <th class="py-3 px-4">Reg No</th>
+                <th class="py-3 px-4">Student Name</th>
+                <th class="py-3 px-4">Group</th>
+                <th class="py-3 px-4">Elective</th>
+                <th class="py-3 px-4">Subject</th>
+                <th class="py-3 px-4">Allocated Faculty</th>
+                <th class="py-3 px-4">Selection Date & Time</th>
+                <th class="py-3 px-4">Status</th>
+                <th class="py-3 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="oe-report-tbody" class="divide-y divide-slate-100">
+              ${renderOEReportRows(registrations)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderOEReportRows(registrations) {
+  if (registrations.length === 0) {
+    return `
+      <tr>
+        <td colspan="9" class="p-8 text-center text-slate-400">
+          <i class="fa-solid fa-inbox text-3xl mb-2 text-slate-300"></i>
+          <div>No open elective student registrations found.</div>
+        </td>
+      </tr>
+    `;
+  }
+
+  return registrations.map(r => {
+    const dt = r.registered_at ? new Date(r.registered_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A';
+    return `
+      <tr class="oe-report-row hover:bg-slate-50/70 transition-colors" data-search="${(r.reg_no + ' ' + (r.student_name||'')).toUpperCase()}" data-elective="${r.elective_name || ''}">
+        <td class="py-3 px-4 font-mono font-bold text-indigo-700">${r.reg_no}</td>
+        <td class="py-3 px-4 font-medium text-slate-900">${r.student_name || 'N/A'}</td>
+        <td class="py-3 px-4 text-slate-600">${r.student_section || 'Group 1'}</td>
+        <td class="py-3 px-4"><span class="px-2 py-0.5 rounded font-bold text-[10px] bg-indigo-50 text-indigo-700">${r.elective_name}</span></td>
+        <td class="py-3 px-4 font-semibold text-slate-800">${r.subject_name}</td>
+        <td class="py-3 px-4 font-semibold text-blue-700">${r.faculty_name}</td>
+        <td class="py-3 px-4 text-slate-500 text-[11px]">${dt}</td>
+        <td class="py-3 px-4">
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            ${r.status || 'CONFIRMED'}
+          </span>
+        </td>
+        <td class="py-3 px-4 text-right">
+          <button onclick="cancelOERegistration(${r.id}, '${encodeURIComponent(r.student_name || r.reg_no)}', '${encodeURIComponent(r.elective_name)}')" class="px-2.5 py-1 text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg text-[11px] font-semibold transition-all" title="Reset this selection">
+            <i class="fa-solid fa-rotate-left mr-1"></i>Cancel
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterOEReports() {
+  const searchInput = document.getElementById('oe-report-search');
+  const electiveSelect = document.getElementById('oe-report-filter-elective');
+  const term = (searchInput ? searchInput.value : '').toUpperCase().trim();
+  const elective = electiveSelect ? electiveSelect.value : 'ALL';
+
+  CURRENT_OE_REPORT_FILTERS.search = term;
+  CURRENT_OE_REPORT_FILTERS.electiveId = elective;
+
+  const rows = document.querySelectorAll('.oe-report-row');
+  let visibleCount = 0;
+  rows.forEach(row => {
+    const rowSearch = row.getAttribute('data-search') || '';
+    const rowElective = row.getAttribute('data-elective') || '';
+
+    const matchesSearch = !term || rowSearch.includes(term);
+    const matchesElective = elective === 'ALL' || rowElective === elective;
+
+    if (matchesSearch && matchesElective) {
+      row.style.display = '';
+      visibleCount++;
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  const countSpan = document.getElementById('oe-report-count');
+  if (countSpan) countSpan.textContent = visibleCount;
+}
+
+function exportOEReportsToCSV() {
+  const rep = ADMIN_DATA.oeReports || {};
+  const registrations = rep.registrations || [];
+  if (registrations.length === 0) {
+    showToast('No open elective registrations to export.', 'warning');
+    return;
+  }
+
+  const term = CURRENT_OE_REPORT_FILTERS.search;
+  const elective = CURRENT_OE_REPORT_FILTERS.electiveId;
+
+  const filtered = registrations.filter(r => {
+    const rowSearch = (r.reg_no + ' ' + (r.student_name||'')).toUpperCase();
+    const matchesSearch = !term || rowSearch.includes(term);
+    const matchesElective = elective === 'ALL' || r.elective_name === elective;
+    return matchesSearch && matchesElective;
+  });
+
+  let csv = '﻿';
+  csv += 'Reg No,Student Name,Group,Elective,Subject Code,Subject Name,Allocated Faculty,Faculty Code,Timestamp,Status\n';
+
+  filtered.forEach(r => {
+    const dt = r.registered_at ? new Date(r.registered_at).toISOString() : '';
+    const row = [
+      `"${r.reg_no}"`,
+      `"${(r.student_name || '').replace(/"/g, '""')}"`,
+      `"${r.student_section || 'Group 1'}"`,
+      `"${r.elective_name}"`,
+      `"${r.subject_code || ''}"`,
+      `"${(r.subject_name || '').replace(/"/g, '""')}"`,
+      `"${(r.faculty_name || '').replace(/"/g, '""')}"`,
+      `"${r.faculty_code || ''}"`,
+      `"${dt}"`,
+      `"${r.status || 'CONFIRMED'}"`
+    ];
+    csv += row.join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `open_elective_registrations_${Date.now()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`Exported ${filtered.length} open elective registrations to CSV!`, 'success');
+}
+
+// -------------------------------------------------------------------------
+// Sub-view 3: Incomplete Students
+// -------------------------------------------------------------------------
+function renderOEIncompleteView() {
+  const rep = ADMIN_DATA.oeReports || {};
+  const incomplete = rep.incomplete_students || [];
+
+  return `
+    <div class="space-y-4">
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="flex-1">
+          <div class="relative">
+            <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+            <input type="text" id="oe-incomplete-search" oninput="filterOEIncomplete()" placeholder="Search incomplete students by name or registration number..." value="${CURRENT_OE_INCOMPLETE_SEARCH}" class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="exportOEIncompleteToCSV()" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all">
+            <i class="fa-solid fa-file-excel"></i>
+            <span>Export Incomplete List</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-amber-50/50">
+          <div class="text-xs font-bold text-amber-900">
+            Pending Students: <span id="oe-incomplete-count" class="font-extrabold">${incomplete.length}</span> students have not completed both Open Electives
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+              <tr>
+                <th class="py-3 px-4">Reg No</th>
+                <th class="py-3 px-4">Student Name</th>
+                <th class="py-3 px-4">Cohort</th>
+                <th class="py-3 px-4">Group</th>
+                <th class="py-3 px-4">Completed Selections</th>
+                <th class="py-3 px-4">Missing Requirements</th>
+                <th class="py-3 px-4">Status</th>
+              </tr>
+            </thead>
+            <tbody id="oe-incomplete-tbody" class="divide-y divide-slate-100">
+              ${renderOEIncompleteRows(incomplete)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderOEIncompleteRows(incomplete) {
+  if (incomplete.length === 0) {
+    return `
+      <tr>
+        <td colspan="7" class="p-8 text-center text-emerald-600 font-semibold">
+          <i class="fa-solid fa-circle-check text-3xl mb-2 text-emerald-500"></i>
+          <div>All eligible 3rd year students have completed both Open Electives!</div>
+        </td>
+      </tr>
+    `;
+  }
+
+  return incomplete.map(s => {
+    const isPartial = s.completed_count > 0;
+    return `
+      <tr class="oe-incomplete-row hover:bg-slate-50/70 transition-colors" data-search="${(s.reg_no + ' ' + (s.name || '')).toUpperCase()}">
+        <td class="py-3 px-4 font-mono font-bold text-slate-900">${s.reg_no}</td>
+        <td class="py-3 px-4 font-medium text-slate-900">${s.name || 'N/A'}</td>
+        <td class="py-3 px-4 text-slate-500">3rd Year (Sem 6)</td>
+        <td class="py-3 px-4 text-slate-600">${s.section || 'Group 1'}</td>
+        <td class="py-3 px-4">
+          <span class="font-bold text-slate-700">${s.completed_count || 0}</span> of ${s.required_count || 2}
+        </td>
+        <td class="py-3 px-4 text-rose-600 font-medium">
+          ${isPartial ? 'Requires 1 more elective selection' : 'Requires both Open Elective I & II'}
+        </td>
+        <td class="py-3 px-4">
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isPartial ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'}">
+            ${isPartial ? 'Partially Completed' : 'Not Started'}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterOEIncomplete() {
+  const input = document.getElementById('oe-incomplete-search');
+  const term = (input ? input.value : '').toUpperCase().trim();
+  CURRENT_OE_INCOMPLETE_SEARCH = term;
+
+  const rows = document.querySelectorAll('.oe-incomplete-row');
+  let count = 0;
+  rows.forEach(r => {
+    const s = r.getAttribute('data-search') || '';
+    if (!term || s.includes(term)) {
+      r.style.display = '';
+      count++;
+    } else {
+      r.style.display = 'none';
+    }
+  });
+
+  const countSpan = document.getElementById('oe-incomplete-count');
+  if (countSpan) countSpan.textContent = count;
+}
+
+function exportOEIncompleteToCSV() {
+  const rep = ADMIN_DATA.oeReports || {};
+  const incomplete = rep.incomplete_students || [];
+  if (incomplete.length === 0) {
+    showToast('No incomplete students to export.', 'info');
+    return;
+  }
+
+  const term = CURRENT_OE_INCOMPLETE_SEARCH;
+  const filtered = incomplete.filter(s => {
+    const str = (s.reg_no + ' ' + (s.name || '')).toUpperCase();
+    return !term || str.includes(term);
+  });
+
+  let csv = '﻿';
+  csv += 'Reg No,Student Name,Academic Year,Semester,Group,Completed Selections,Required Selections,Status\n';
+
+  filtered.forEach(s => {
+    const row = [
+      `"${s.reg_no}"`,
+      `"${(s.name || '').replace(/"/g, '""')}"`,
+      `"3rd Year"`,
+      `"Sem 6"`,
+      `"${s.section || 'Group 1'}"`,
+      `"${s.completed_count || 0}"`,
+      `"${s.required_count || 2}"`,
+      `"${(s.completed_count > 0 ? 'Partially Completed' : 'Not Started')}"`
+    ];
+    csv += row.join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `incomplete_open_electives_${Date.now()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`Exported ${filtered.length} pending students to CSV!`, 'success');
+}
+
+// -------------------------------------------------------------------------
+// Sub-view 4: Capacity & Demand Analysis
+// -------------------------------------------------------------------------
+function renderOEDemandView() {
+  const rep = ADMIN_DATA.oeReports || {};
+  const subjectAllocs = rep.subject_allocations || [];
+  const facultyAllocs = rep.faculty_allocations || [];
+
+  return `
+    <div class="space-y-6">
+      <!-- Subject-wise Demand Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200 bg-slate-50">
+          <h4 class="font-bold text-sm text-slate-800">Subject-wise Student Demand</h4>
+          <p class="text-xs text-slate-500">Total number of students who have enrolled in each subject</p>
+        </div>
+        <div class="p-5">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${subjectAllocs.map(sa => `
+              <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+                <div class="flex items-center justify-between text-xs mb-1">
+                  <span class="px-2 py-0.5 rounded font-bold text-[10px] bg-indigo-100 text-indigo-700">${sa.elective_name}</span>
+                  <span class="mono-font text-[11px] text-slate-500">${sa.subject_code || ''}</span>
+                </div>
+                <div class="font-bold text-sm text-slate-900 mt-1">${sa.subject_name}</div>
+                <div class="mt-3 flex items-baseline justify-between">
+                  <span class="text-xs text-slate-500">Allocated Students:</span>
+                  <span class="text-base font-extrabold text-indigo-600">${sa.allocated_count}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Faculty-wise Capacity & Fill Rate Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div>
+            <h4 class="font-bold text-sm text-slate-800">Faculty-wise Capacity & Allocation Fill Rate</h4>
+            <p class="text-xs text-slate-500">Occupancy status per assigned faculty member</p>
+          </div>
+          <!-- Admin Legend -->
+          <div class="flex items-center gap-3 text-xs">
+            <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Available (&le;40%)</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Filling Fast (&gt;40%)</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Full (100%)</span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+              <tr>
+                <th class="py-3 px-4">Elective</th>
+                <th class="py-3 px-4">Subject</th>
+                <th class="py-3 px-4">Faculty Member</th>
+                <th class="py-3 px-4">Capacity</th>
+                <th class="py-3 px-4">Occupied Seats</th>
+                <th class="py-3 px-4">Remaining Seats</th>
+                <th class="py-3 px-4">Occupancy Fill Rate</th>
+                <th class="py-3 px-4">Live Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${facultyAllocs.map(fa => {
+                const max = fa.max_capacity || 70;
+                const occ = fa.allocated_count || 0;
+                const pct = max > 0 ? Math.round((occ / max) * 100) : 0;
+                let colorClass = 'bg-emerald-500';
+                let statusLabel = 'Available';
+                if (pct >= 100) {
+                  colorClass = 'bg-rose-500';
+                  statusLabel = 'Full';
+                } else if (pct > 40) {
+                  colorClass = 'bg-amber-500';
+                  statusLabel = 'Filling Fast';
+                }
+
+                return `
+                  <tr class="hover:bg-slate-50/70 transition-colors">
+                    <td class="py-3 px-4 font-semibold text-indigo-700">${fa.elective_name}</td>
+                    <td class="py-3 px-4 font-medium text-slate-800">${fa.subject_name}</td>
+                    <td class="py-3 px-4 font-bold text-slate-900">${fa.faculty_name}</td>
+                    <td class="py-3 px-4 font-semibold text-slate-700">${max}</td>
+                    <td class="py-3 px-4 font-bold text-blue-600">${occ}</td>
+                    <td class="py-3 px-4 font-bold ${fa.available_seats === 0 ? 'text-rose-600' : 'text-slate-700'}">${fa.available_seats}</td>
+                    <td class="py-3 px-4">
+                      <div class="flex items-center gap-2">
+                        <div class="w-24 bg-slate-200 h-2 rounded-full overflow-hidden">
+                          <div class="h-full ${colorClass}" style="width: ${Math.min(100, pct)}%"></div>
+                        </div>
+                        <span class="font-bold text-slate-700">${pct}%</span>
+                      </div>
+                    </td>
+                    <td class="py-3 px-4">
+                      <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${pct >= 100 ? 'bg-rose-100 text-rose-800' : (pct > 40 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')}">
+                        <span class="w-2 h-2 rounded-full ${colorClass}"></span>
+                        ${statusLabel}
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// -------------------------------------------------------------------------
+// Action Modals & Handlers
+// -------------------------------------------------------------------------
+
+async function toggleOEElectiveStatus(electiveId, currentStatus) {
+  try {
+    const res = await api.put(`/api/open-electives/electives/${electiveId}`, {
+      is_active: currentStatus ? 0 : 1
+    });
+    showToast(res.message || 'Elective status updated', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Failed to update elective status', 'error');
+  }
+}
+
+function openAddOEElectiveModal() {
+  openModal({
+    title: 'Create Open Elective',
+    body: `
+      <form id="form-add-oe-elective" onsubmit="submitAddOEElective(event)" class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Elective Name <span class="text-rose-500">*</span></label>
+          <input type="text" id="oe-el-name" required placeholder="e.g. Open Elective – I" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Academic Year</label>
+            <input type="number" id="oe-el-year" value="3" readonly class="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-semibold">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Branch</label>
+            <input type="text" id="oe-el-branch" value="CSE" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase">
+          </div>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer mt-2">
+            <input type="checkbox" id="oe-el-active" checked class="w-4 h-4 rounded text-indigo-600">
+            <span class="font-semibold text-slate-700">Set as Active immediately</span>
+          </label>
+        </div>
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold">Cancel</button>
+          <button type="submit" id="btn-submit-add-elective" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm">Create Elective</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+async function submitAddOEElective(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-submit-add-elective');
+  if (btn) btn.disabled = true;
+
+  try {
+    const name = document.getElementById('oe-el-name').value.trim();
+    const branch = document.getElementById('oe-el-branch').value.trim();
+    const is_active = document.getElementById('oe-el-active').checked ? 1 : 0;
+
+    const res = await api.post('/api/open-electives/electives', {
+      name,
+      academic_year: 3,
+      branch,
+      is_active
+    });
+
+    closeModal();
+    showToast(res.message || 'Elective created successfully', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Failed to create elective', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function openAddOESubjectModal(preferredElectiveId = null) {
+  const electives = ADMIN_DATA.openElectives || [];
+  if (electives.length === 0) {
+    showToast('Please create an elective first.', 'warning');
+    return;
+  }
+
+  openModal({
+    title: 'Add Subject to Open Elective',
+    body: `
+      <form id="form-add-oe-subject" onsubmit="submitAddOESubject(event)" class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Target Elective <span class="text-rose-500">*</span></label>
+          <select id="oe-sub-elective" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+            ${electives.map(e => `<option value="${e.id}" ${preferredElectiveId && preferredElectiveId === e.id ? 'selected' : ''}>${e.name}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Subject Name <span class="text-rose-500">*</span></label>
+          <input type="text" id="oe-sub-name" required placeholder="e.g. DevOps / Cloud Computing" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Subject Code</label>
+          <input type="text" id="oe-sub-code" placeholder="e.g. 20A05601" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase mono-font">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Description / Syllabus Overview</label>
+          <textarea id="oe-sub-desc" rows="2" placeholder="Brief outline of the course..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl"></textarea>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="oe-sub-active" checked class="w-4 h-4 rounded text-indigo-600">
+            <span class="font-semibold text-slate-700">Active (Visible to Students)</span>
+          </label>
+        </div>
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold">Cancel</button>
+          <button type="submit" id="btn-submit-add-subject" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm">Save Subject</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+async function submitAddOESubject(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-submit-add-subject');
+  if (btn) btn.disabled = true;
+
+  try {
+    const elective_id = parseInt(document.getElementById('oe-sub-elective').value, 10);
+    const subject_name = document.getElementById('oe-sub-name').value.trim();
+    const subject_code = document.getElementById('oe-sub-code').value.trim();
+    const description = document.getElementById('oe-sub-desc').value.trim();
+    const is_active = document.getElementById('oe-sub-active').checked ? 1 : 0;
+
+    const res = await api.post('/api/open-electives/subjects', {
+      elective_id,
+      subject_name,
+      subject_code,
+      description,
+      is_active
+    });
+
+    closeModal();
+    showToast(res.message || 'Subject added successfully', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Failed to add subject', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function openEditOESubjectModal(subjectId) {
+  let foundSub = null;
+  (ADMIN_DATA.openElectives || []).forEach(e => {
+    (e.subjects || []).forEach(s => {
+      if (s.id === subjectId) foundSub = s;
+    });
+  });
+
+  if (!foundSub) {
+    showToast('Subject not found', 'error');
+    return;
+  }
+
+  openModal({
+    title: 'Edit Open Elective Subject',
+    body: `
+      <form id="form-edit-oe-subject" onsubmit="submitEditOESubject(event, ${subjectId})" class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Subject Name <span class="text-rose-500">*</span></label>
+          <input type="text" id="oe-edit-sub-name" required value="${(foundSub.subject_name || '').replace(/"/g, '&quot;')}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Subject Code</label>
+          <input type="text" id="oe-edit-sub-code" value="${foundSub.subject_code || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl uppercase mono-font">
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Description</label>
+          <textarea id="oe-edit-sub-desc" rows="2" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">${foundSub.description || ''}</textarea>
+        </div>
+        <div>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="oe-edit-sub-active" ${foundSub.is_active ? 'checked' : ''} class="w-4 h-4 rounded text-indigo-600">
+            <span class="font-semibold text-slate-700">Active</span>
+          </label>
+        </div>
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold">Cancel</button>
+          <button type="submit" id="btn-submit-edit-subject" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm">Save Changes</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+async function submitEditOESubject(e, subjectId) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-submit-edit-subject');
+  if (btn) btn.disabled = true;
+
+  try {
+    const subject_name = document.getElementById('oe-edit-sub-name').value.trim();
+    const subject_code = document.getElementById('oe-edit-sub-code').value.trim();
+    const description = document.getElementById('oe-edit-sub-desc').value.trim();
+    const is_active = document.getElementById('oe-edit-sub-active').checked ? 1 : 0;
+
+    const res = await api.put(`/api/open-electives/subjects/${subjectId}`, {
+      subject_name,
+      subject_code,
+      description,
+      is_active
+    });
+
+    closeModal();
+    showToast(res.message || 'Subject updated successfully', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Failed to update subject', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function deleteOESubject(subjectId, encodedName) {
+  const name = decodeURIComponent(encodedName);
+  if (!confirm(`Are you sure you want to delete the subject "${name}"?\n\nNote: Deletion will be blocked if students have already registered for this subject to protect student records.`)) {
+    return;
+  }
+
+  try {
+    const res = await api.delete(`/api/open-electives/subjects/${subjectId}`);
+    showToast(res.message || 'Subject deleted successfully', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Cannot delete subject', 'error');
+  }
+}
+
+function openAssignOEFacultyModal(preferredSubjectId = null, encodedSubjectName = '') {
+  const electives = ADMIN_DATA.openElectives || [];
+  const allFaculty = ADMIN_DATA.faculty || [];
+
+  if (allFaculty.length === 0) {
+    showToast('No faculty members found in database.', 'warning');
+    return;
+  }
+
+  // Collect all subjects across electives
+  const allSubjects = [];
+  electives.forEach(e => {
+    (e.subjects || []).forEach(s => {
+      allSubjects.push({ id: s.id, name: `[${e.name}] ${s.subject_name}` });
+    });
+  });
+
+  if (allSubjects.length === 0) {
+    showToast('Please add at least one subject first.', 'warning');
+    return;
+  }
+
+  openModal({
+    title: 'Assign Faculty to Open Elective Subject',
+    body: `
+      <form id="form-assign-oe-faculty" onsubmit="submitAssignOEFaculty(event)" class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Target Subject <span class="text-rose-500">*</span></label>
+          <select id="oe-assign-subject" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+            ${allSubjects.map(s => `<option value="${s.id}" ${preferredSubjectId && preferredSubjectId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Select Faculty Member <span class="text-rose-500">*</span></label>
+          <select id="oe-assign-faculty" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+            <option value="">-- Choose Faculty --</option>
+            ${allFaculty.map(f => `<option value="${f.id}">${f.name} (${f.faculty_code || 'FAC'} - ${f.department || 'CSE'})</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Maximum Student Capacity <span class="text-rose-500">*</span></label>
+          <input type="number" id="oe-assign-capacity" min="1" max="500" value="70" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold">
+          <p class="text-[11px] text-slate-500 mt-1">Default is 70 students per faculty. The system strictly blocks allocation once this capacity is reached.</p>
+        </div>
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold">Cancel</button>
+          <button type="submit" id="btn-submit-assign-faculty" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm">Assign Faculty</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+async function submitAssignOEFaculty(e) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-submit-assign-faculty');
+  if (btn) btn.disabled = true;
+
+  try {
+    const subject_id = parseInt(document.getElementById('oe-assign-subject').value, 10);
+    const faculty_id = parseInt(document.getElementById('oe-assign-faculty').value, 10);
+    const max_capacity = parseInt(document.getElementById('oe-assign-capacity').value, 10);
+
+    if (!faculty_id) {
+      showToast('Please select a faculty member.', 'warning');
+      return;
+    }
+
+    const res = await api.post('/api/open-electives/assignments', {
+      subject_id,
+      faculty_id,
+      max_capacity
+    });
+
+    closeModal();
+    showToast(res.message || 'Faculty assigned successfully', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Failed to assign faculty', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function openEditOECapacityModal(assignmentId, currentCapacity, allocatedCount) {
+  openModal({
+    title: 'Update Faculty Capacity',
+    body: `
+      <form id="form-edit-oe-cap" onsubmit="submitEditOECapacity(event, ${assignmentId})" class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Configured Maximum Capacity <span class="text-rose-500">*</span></label>
+          <input type="number" id="oe-edit-capacity-input" min="${allocatedCount || 1}" max="500" value="${currentCapacity}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm">
+        </div>
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+          <div class="text-[11px] text-slate-500">Currently Allocated Students: <strong class="text-slate-900">${allocatedCount}</strong></div>
+          <p class="text-[11px] text-slate-500 mt-0.5">Capacity cannot be set lower than currently confirmed allocations (${allocatedCount}).</p>
+        </div>
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold">Cancel</button>
+          <button type="submit" id="btn-submit-edit-cap" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm">Save Capacity</button>
+        </div>
+      </form>
+    `
+  });
+}
+
+async function submitEditOECapacity(e, assignmentId) {
+  e.preventDefault();
+  const btn = document.getElementById('btn-submit-edit-cap');
+  if (btn) btn.disabled = true;
+
+  try {
+    const max_capacity = parseInt(document.getElementById('oe-edit-capacity-input').value, 10);
+    const res = await api.put(`/api/open-electives/assignments/${assignmentId}`, {
+      max_capacity
+    });
+
+    closeModal();
+    showToast(res.message || 'Capacity updated successfully', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Failed to update capacity', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function deleteOEAssignment(assignmentId, encodedName) {
+  const name = decodeURIComponent(encodedName);
+  if (!confirm(`Remove faculty assignment for "${name}"?\n\nIf students have already enrolled with this faculty, removal will be prevented to avoid data loss.`)) {
+    return;
+  }
+
+  try {
+    const res = await api.delete(`/api/open-electives/assignments/${assignmentId}`);
+    showToast(res.message || 'Faculty assignment removed', 'success');
+    await loadAdminOpenElectives('config');
+  } catch (err) {
+    showToast(err.message || 'Cannot remove assignment', 'error');
+  }
+}
+
+async function cancelOERegistration(registrationId, encodedStudent, encodedElective) {
+  const student = decodeURIComponent(encodedStudent);
+  const elective = decodeURIComponent(encodedElective);
+
+  if (!confirm(`Reset elective selection for ${student} in ${elective}?\n\nThis will release 1 seat back to the faculty capacity and allow the student to select again.`)) {
+    return;
+  }
+
+  try {
+    const res = await api.post(`/api/open-electives/registrations/${registrationId}/cancel`);
+    showToast(res.message || 'Registration cancelled successfully', 'success');
+    await loadAdminOpenElectives('reports');
+  } catch (err) {
+    showToast(err.message || 'Failed to cancel registration', 'error');
+  }
+}
+
+// Explicit global exposure to guarantee zero undefined errors
+window.loadAdminOpenElectives = loadAdminOpenElectives;
+window.switchOESubTab = switchOESubTab;
+window.renderAdminOpenElectives = renderAdminOpenElectives;
+window.toggleOEElectiveStatus = toggleOEElectiveStatus;
+window.openAddOEElectiveModal = openAddOEElectiveModal;
+window.submitAddOEElective = submitAddOEElective;
+window.openAddOESubjectModal = openAddOESubjectModal;
+window.submitAddOESubject = submitAddOESubject;
+window.openEditOESubjectModal = openEditOESubjectModal;
+window.submitEditOESubject = submitEditOESubject;
+window.deleteOESubject = deleteOESubject;
+window.openAssignOEFacultyModal = openAssignOEFacultyModal;
+window.submitAssignOEFaculty = submitAssignOEFaculty;
+window.openEditOECapacityModal = openEditOECapacityModal;
+window.submitEditOECapacity = submitEditOECapacity;
+window.deleteOEAssignment = deleteOEAssignment;
+window.cancelOERegistration = cancelOERegistration;
+window.filterOEReports = filterOEReports;
+window.exportOEReportsToCSV = exportOEReportsToCSV;
+window.filterOEIncomplete = filterOEIncomplete;
+window.exportOEIncompleteToCSV = exportOEIncompleteToCSV;

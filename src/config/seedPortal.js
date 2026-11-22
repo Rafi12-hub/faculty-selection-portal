@@ -181,6 +181,102 @@ function runAutoSeed(db) {
       });
     }
 
+    // 7. Ensure Open Elective I & II exist with subjects and faculty assignments
+    const oeCount = db.prepare("SELECT count(*) as count FROM open_electives").get().count;
+    if (oeCount < 2) {
+      console.log('[AutoSeed] Setting up Open Elective – I and Open Elective – II with initial subjects and faculties...');
+      
+      // Open Elective I
+      const oe1Res = db.prepare(`
+        INSERT INTO open_electives (code, name, academic_year, semester, branch, is_active, created_at)
+        VALUES ('OE-1', 'Open Elective – I', 3, 6, 'CSE', 1, ?)
+      `).run(now);
+      const oe1Id = oe1Res.lastInsertRowid;
+
+      // Open Elective II
+      const oe2Res = db.prepare(`
+        INSERT INTO open_electives (code, name, academic_year, semester, branch, is_active, created_at)
+        VALUES ('OE-2', 'Open Elective – II', 3, 6, 'CSE', 1, ?)
+      `).run(now);
+      const oe2Id = oe2Res.lastInsertRowid;
+
+      // Faculty lookup helper
+      const allFaculty = db.prepare('SELECT id, name FROM faculty ORDER BY id ASC').all();
+      const getFacId = (namePart) => {
+        const found = allFaculty.find(f => f.name.toLowerCase().includes(namePart.toLowerCase()));
+        return found ? found.id : allFaculty[0].id;
+      };
+
+      // OE-1 Subjects
+      const oe1Subs = [
+        {
+          code: 'OE301',
+          name: 'DevOps Practices & Cloud Automation',
+          desc: 'CI/CD Pipelines, Docker containerization, Kubernetes orchestration, and Infrastructure as Code.',
+          faculties: [getFacId('Bhaskara'), getFacId('Subba Reddy'), getFacId('Madhusudhana')]
+        },
+        {
+          code: 'OE302',
+          name: 'Introduction to Cyber Security & Forensics',
+          desc: 'Network defense, threat detection, penetration testing fundamentals, and incident response.',
+          faculties: [getFacId('Sunil Vijaya'), getFacId('Sravan Kumar'), getFacId('Prathap')]
+        },
+        {
+          code: 'OE303',
+          name: 'Data Science Essentials & Analytics',
+          desc: 'Exploratory data analysis, predictive modeling, statistical learning, and business intelligence.',
+          faculties: [getFacId('Raja Kumar'), getFacId('Nageswara'), getFacId('Sreedevi')]
+        }
+      ];
+
+      // OE-2 Subjects
+      const oe2Subs = [
+        {
+          code: 'OE304',
+          name: 'Cloud Infrastructure & Kubernetes',
+          desc: 'Microservices architecture, AWS/GCP cloud platforms, container management, and distributed systems.',
+          faculties: [getFacId('Ramanjaneya'), getFacId('Ayyavaraiah'), getFacId('Rama Subbaiah')]
+        },
+        {
+          code: 'OE305',
+          name: 'Full Stack Development with MERN',
+          desc: 'Modern web architectures with MongoDB, Express, React, and Node.js with secure authentication.',
+          faculties: [getFacId('Naveen Sundar'), getFacId('Rajasekhar'), getFacId('Hrishikesava')]
+        },
+        {
+          code: 'OE306',
+          name: 'Artificial Intelligence & Machine Learning',
+          desc: 'Supervised and unsupervised algorithms, neural networks, computer vision, and NLP foundations.',
+          faculties: [getFacId('Narasimhulu'), getFacId('Janardhan'), getFacId('Swetha')]
+        }
+      ];
+
+      const insertSub = db.prepare(`
+        INSERT INTO open_elective_subjects (elective_id, subject_code, subject_name, description, is_active, created_at)
+        VALUES (?, ?, ?, ?, 1, ?)
+      `);
+
+      const insertAssign = db.prepare(`
+        INSERT OR IGNORE INTO open_elective_faculty_assignments (subject_id, faculty_id, max_capacity, is_active, created_at)
+        VALUES (?, ?, 70, 1, ?)
+      `);
+
+      oe1Subs.forEach(s => {
+        const subRes = insertSub.run(oe1Id, s.code, s.name, s.desc, now);
+        s.faculties.forEach(facId => {
+          if (facId) insertAssign.run(subRes.lastInsertRowid, facId, now);
+        });
+      });
+
+      oe2Subs.forEach(s => {
+        const subRes = insertSub.run(oe2Id, s.code, s.name, s.desc, now);
+        s.faculties.forEach(facId => {
+          if (facId) insertAssign.run(subRes.lastInsertRowid, facId, now);
+        });
+      });
+      console.log('[AutoSeed] Open Elective I & II initialized successfully with subjects and faculty capacities.');
+    }
+
     console.log('[AutoSeed] Database check completed successfully: 52 faculty, 6 subjects, 410 students, and cohort rounds active.');
   } catch (err) {
     console.error('[AutoSeed] Error during autoseed:', err);

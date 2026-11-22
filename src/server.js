@@ -43,6 +43,7 @@ app.use('/api/mappings', require('./routes/mappings'));
 app.use('/api/students', require('./routes/students'));
 app.use('/api/rounds', require('./routes/rounds'));
 app.use('/api/selections', require('./routes/selections'));
+app.use('/api/open-electives', require('./routes/openElectives'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/audit', require('./routes/audit'));
 

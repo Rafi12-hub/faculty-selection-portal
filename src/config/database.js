@@ -123,6 +123,55 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_selections_student ON selections(student_id, status);
     CREATE INDEX IF NOT EXISTS idx_mappings_subject_sem ON faculty_subject_mappings(subject_id, academic_year, semester, status);
     CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
+
+    -- Open Elective Selection Tables for 3rd Year Students
+    CREATE TABLE IF NOT EXISTS open_electives (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      academic_year INTEGER DEFAULT 3 CHECK(academic_year BETWEEN 1 AND 4),
+      semester INTEGER DEFAULT 6,
+      branch TEXT DEFAULT 'CSE',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS open_elective_subjects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      elective_id INTEGER NOT NULL REFERENCES open_electives(id) ON DELETE CASCADE,
+      subject_code TEXT,
+      subject_name TEXT NOT NULL,
+      description TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS open_elective_faculty_assignments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_id INTEGER NOT NULL REFERENCES open_elective_subjects(id) ON DELETE CASCADE,
+      faculty_id INTEGER NOT NULL REFERENCES faculty(id) ON DELETE RESTRICT,
+      max_capacity INTEGER NOT NULL DEFAULT 65 CHECK(max_capacity >= 0),
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      UNIQUE(subject_id, faculty_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS open_elective_registrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE RESTRICT,
+      elective_id INTEGER NOT NULL REFERENCES open_electives(id) ON DELETE RESTRICT,
+      subject_id INTEGER NOT NULL REFERENCES open_elective_subjects(id) ON DELETE RESTRICT,
+      faculty_assignment_id INTEGER NOT NULL REFERENCES open_elective_faculty_assignments(id) ON DELETE RESTRICT,
+      faculty_id INTEGER NOT NULL REFERENCES faculty(id) ON DELETE RESTRICT,
+      registration_timestamp TEXT NOT NULL,
+      status TEXT DEFAULT 'CONFIRMED' CHECK(status IN ('CONFIRMED', 'CANCELLED')),
+      UNIQUE(student_id, elective_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oe_reg_assignment ON open_elective_registrations(faculty_assignment_id, status);
+    CREATE INDEX IF NOT EXISTS idx_oe_reg_student ON open_elective_registrations(student_id, elective_id, status);
+    CREATE INDEX IF NOT EXISTS idx_oe_subjects_elective ON open_elective_subjects(elective_id, is_active);
+    CREATE INDEX IF NOT EXISTS idx_oe_faculty_subject ON open_elective_faculty_assignments(subject_id, is_active);
   `);
 
   // Ensure default administrator account exists

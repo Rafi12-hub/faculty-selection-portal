@@ -279,7 +279,16 @@ async function handleLoginSubmit(e) {
 
       if (res.user.role === 'ADMIN') {
         setView('admin');
-        switchAdminTab('dashboard');
+        if (typeof switchAdminTab === 'function') {
+          switchAdminTab('dashboard');
+        } else if (window.switchAdminTab) {
+          window.switchAdminTab('dashboard');
+        } else {
+          setTimeout(() => {
+            if (typeof switchAdminTab === 'function') switchAdminTab('dashboard');
+            else if (window.switchAdminTab) window.switchAdminTab('dashboard');
+          }, 100);
+        }
       } else {
         setView('student');
         initStudentPortal();
@@ -322,7 +331,16 @@ async function checkSession() {
 
       if (res.user.role === 'ADMIN') {
         setView('admin');
-        switchAdminTab('dashboard');
+        if (typeof switchAdminTab === 'function') {
+          switchAdminTab('dashboard');
+        } else if (window.switchAdminTab) {
+          window.switchAdminTab('dashboard');
+        } else {
+          setTimeout(() => {
+            if (typeof switchAdminTab === 'function') switchAdminTab('dashboard');
+            else if (window.switchAdminTab) window.switchAdminTab('dashboard');
+          }, 100);
+        }
       } else if (res.user.role === 'STUDENT') {
         setView('student');
         initStudentPortal();
