@@ -18,6 +18,24 @@ const FACULTY_ALIASES = {
   'FAC013': 'ram'
 };
 
+function resolveActiveRound(roundsList, userGroup) {
+  if (!roundsList || roundsList.length === 0) return null;
+  // 1. First look for ACTIVE round matching this student's section/group
+  const activeMatched = roundsList.find(r => r.status === 'ACTIVE' && (r.target_group === userGroup || r.target_group === 'ALL' || !r.target_group));
+  if (activeMatched) return activeMatched;
+
+  // 2. Look for any ACTIVE round in the list
+  const anyActive = roundsList.find(r => r.status === 'ACTIVE');
+  if (anyActive) return anyActive;
+
+  // 3. Look for PAUSED round matching userGroup or ALL
+  const pausedMatched = roundsList.find(r => r.status === 'PAUSED' && (r.target_group === userGroup || r.target_group === 'ALL' || !r.target_group));
+  if (pausedMatched) return pausedMatched;
+
+  // 4. Default to matching group round or first round
+  return roundsList.find(r => r.target_group === userGroup) || roundsList.find(r => r.target_group === 'ALL') || roundsList[0];
+}
+
 async function initStudentPortal() {
   if (!STATE.student) return;
 
@@ -53,9 +71,7 @@ async function refreshStudentLiveSeats() {
 
     const prevRoundStatus = ACTIVE_ROUND ? ACTIVE_ROUND.status : null;
     const userGroup = STATE.student ? STATE.student.section : null;
-    const latestRound = (roundsRes && roundsRes.rounds && roundsRes.rounds.length > 0)
-      ? (roundsRes.rounds.find(r => r.target_group === userGroup) || roundsRes.rounds.find(r => r.target_group === 'ALL') || roundsRes.rounds[0])
-      : null;
+    const latestRound = resolveActiveRound(roundsRes ? roundsRes.rounds : [], userGroup);
 
     let needsRerender = false;
 
@@ -139,9 +155,7 @@ async function loadStudentData() {
     // 1. Fetch Rounds
     const roundsRes = await api.get('/api/rounds');
     const userGroup = STATE.student ? STATE.student.section : null;
-    ACTIVE_ROUND = (roundsRes && roundsRes.rounds && roundsRes.rounds.length > 0)
-      ? (roundsRes.rounds.find(r => r.target_group === userGroup) || roundsRes.rounds.find(r => r.target_group === 'ALL') || roundsRes.rounds[0])
-      : null;
+    ACTIVE_ROUND = resolveActiveRound(roundsRes ? roundsRes.rounds : [], userGroup);
 
     const roundBadge = document.getElementById('stu-round-badge');
     const roundName = document.getElementById('stu-round-name');
@@ -153,30 +167,29 @@ async function loadStudentData() {
     }
 
     // 2. Fetch My Selections, Subjects, Mappings, and if 3rd Year Open Electives
-    const promises = [
+    const [selRes, subRes, mapRes] = await Promise.all([
       api.get('/api/selections/my'),
       api.get('/api/subjects'),
       api.get('/api/mappings')
-    ];
-    if (is3rdYear) {
-      promises.push(api.get('/api/open-electives'));
-      promises.push(api.get('/api/open-electives/my'));
-    }
-
-    const results = await Promise.all(promises);
-    const selRes = results[0];
-    const subRes = results[1];
-    const mapRes = results[2];
+    ]);
 
     STUDENT_SELECTIONS = selRes ? selRes.selections : [];
     STUDENT_SUBJECTS = subRes ? subRes.subjects : [];
     STUDENT_MAPPINGS = mapRes ? mapRes.mappings : [];
 
     if (is3rdYear) {
-      const oeRes = results[3];
-      const myOeRes = results[4];
-      STUDENT_OE_DATA = (oeRes && oeRes.success) ? oeRes.electives : [];
-      STUDENT_OE_MY = myOeRes || null;
+      try {
+        const [oeRes, myOeRes] = await Promise.all([
+          api.get('/api/open-electives'),
+          api.get('/api/open-electives/my')
+        ]);
+        STUDENT_OE_DATA = (oeRes && oeRes.success) ? oeRes.electives : [];
+        STUDENT_OE_MY = myOeRes || null;
+      } catch (oeErr) {
+        console.warn('Open electives fetch notice:', oeErr);
+        STUDENT_OE_DATA = [];
+        STUDENT_OE_MY = null;
+      }
     } else {
       STUDENT_OE_DATA = [];
       STUDENT_OE_MY = null;
@@ -446,15 +459,29 @@ function renderStudentSubjects() {
               Confirmed on ${new Date(confirmedSelection.reserved_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
           ` : (!isLiveActive ? `
-            <div class="text-xs text-amber-700 font-medium">
-              <i class="fa-solid fa-lock mr-1"></i> Waiting for administrator to start live selection.
+            <div class="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+              <i class="fa-solid fa-lock text-amber-600"></i>
+              <span>Waiting for administrator to start live selection.</span>
             </div>
+            <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-lock"></i>
+              <span>Selection Locked</span>
+            </button>
           ` : `
             <div class="text-xs ${PENDING_SELECTIONS[subject.id] ? 'text-indigo-700 font-semibold' : 'text-slate-500'}">
               ${PENDING_SELECTIONS[subject.id]
-                ? '<i class="fa-solid fa-check text-indigo-600 mr-1.5"></i>Faculty choice marked. Proceed to complete other subjects below.'
+                ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1.5 font-bold"></i><span class="text-indigo-700 font-bold">Faculty selected. Ready to confirm.</span>'
                 : 'Click an oval above to select your preferred faculty for this course.'}
             </div>
+            <button 
+              ${!PENDING_SELECTIONS[subject.id] ? 'disabled' : ''}
+              onclick="submitSubjectSelection(${subject.id})"
+              class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${PENDING_SELECTIONS[subject.id]
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/25 cursor-pointer'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
+              <i class="fa-solid fa-lock"></i>
+              <span>Confirm Course</span>
+            </button>
           `)}
         </div>
       </div>

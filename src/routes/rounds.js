@@ -35,7 +35,7 @@ router.get('/', (req, res) => {
       }
     }
 
-    sql += ` ORDER BY created_at DESC`;
+    sql += ` ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 WHEN status = 'PAUSED' THEN 1 ELSE 2 END, created_at DESC`;
     const rounds = db.prepare(sql).all(...params);
 
     // Calculate selection count for each round

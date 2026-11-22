@@ -55,7 +55,7 @@ router.get('/', (req, res) => {
           WHERE fa.subject_id = ?
         `;
         if (isStudent) {
-          assignQuery += ' AND fa.is_active = 1 AND f.status = "ACTIVE"';
+          assignQuery += " AND fa.is_active = 1 AND f.status = 'ACTIVE'";
         }
         assignQuery += ' ORDER BY f.name ASC';
 
@@ -239,10 +239,12 @@ router.post('/reserve', (req, res) => {
       const currentRound = db.prepare(`
         SELECT id, name, status, target_group
         FROM selection_rounds
-        WHERE academic_year = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
-        ORDER BY created_at DESC
+        WHERE academic_year = ? 
+          AND (semester = ? OR semester IS NULL)
+          AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
+        ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC
         LIMIT 1
-      `).get(student.academic_year, student.section);
+      `).get(student.academic_year, student.semester, student.section);
 
       const groupLabel = student.section === 'Group 1' ? 'Group 1 (Group A)' : (student.section === 'Group 2' ? 'Group 2 (Group B)' : (student.section || 'Your Cohort'));
 
@@ -369,10 +371,12 @@ router.post('/reserve-batch', (req, res) => {
       const currentRound = db.prepare(`
         SELECT id, name, status, target_group
         FROM selection_rounds
-        WHERE academic_year = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
-        ORDER BY created_at DESC
+        WHERE academic_year = ? 
+          AND (semester = ? OR semester IS NULL)
+          AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
+        ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END, created_at DESC
         LIMIT 1
-      `).get(student.academic_year, student.section);
+      `).get(student.academic_year, student.semester, student.section);
 
       const groupLabel = student.section === 'Group 1' ? 'Group 1 (Group A)' : (student.section === 'Group 2' ? 'Group 2 (Group B)' : (student.section || 'Your Cohort'));
 
