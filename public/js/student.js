@@ -487,25 +487,12 @@ function renderStudentSubjects() {
               <i class="fa-solid fa-lock text-amber-600"></i>
               <span>Waiting for administrator to start live selection.</span>
             </div>
-            <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 flex items-center gap-2">
-              <i class="fa-solid fa-lock"></i>
-              <span>Selection Locked</span>
-            </button>
           ` : `
-            <div class="text-xs ${PENDING_SELECTIONS[subject.id] ? 'text-indigo-700 font-semibold' : 'text-slate-500'}">
+            <div class="text-xs ${PENDING_SELECTIONS[subject.id] ? 'text-indigo-700 font-bold' : 'text-slate-500'} flex items-center gap-1.5">
               ${PENDING_SELECTIONS[subject.id]
-                ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1.5 font-bold"></i><span class="text-indigo-700 font-bold">Faculty selected. Ready to confirm.</span>'
-                : 'Click an oval above to select your preferred faculty for this course.'}
+                ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Faculty choice marked. Submit all selections below.</span>'
+                : '<i class="fa-regular fa-circle text-slate-400 mr-1"></i><span>Click an oval above to mark your preferred faculty.</span>'}
             </div>
-            <button 
-              ${!PENDING_SELECTIONS[subject.id] ? 'disabled' : ''}
-              onclick="submitSubjectSelection(${subject.id})"
-              class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${PENDING_SELECTIONS[subject.id]
-                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/25 cursor-pointer'
-                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
-              <i class="fa-solid fa-lock"></i>
-              <span>Confirm Course</span>
-            </button>
           `)}
         </div>
       </div>
@@ -648,32 +635,19 @@ function renderStudentSubjects() {
             </div>
           </div>
 
-          <!-- Step 3: Confirm Card Footer -->
+          <!-- Step 3: Status Footer -->
           <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             ${!isLiveActive ? `
               <div class="text-xs text-amber-700 font-medium flex items-center gap-1.5">
                 <i class="fa-solid fa-lock text-amber-600"></i>
                 <span>Waiting for administrator to start live selection.</span>
               </div>
-              <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 flex items-center gap-2">
-                <i class="fa-solid fa-lock"></i>
-                <span>Selection Locked</span>
-              </button>
             ` : `
-              <div class="text-xs text-slate-500">
+              <div class="text-xs ${pending.mappingId ? 'text-indigo-700 font-bold' : 'text-slate-500'} flex items-center gap-1.5">
                 ${pending.mappingId 
-                  ? '<span class="text-indigo-700 font-bold"><i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> Faculty selected. Ready to confirm.</span>'
-                  : 'Choose a faculty above to lock this elective.'}
+                  ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Elective marked. Submit all selections below.</span>'
+                  : '<i class="fa-regular fa-circle text-slate-400 mr-1"></i><span>Choose a subject and an available faculty above.</span>'}
               </div>
-              <button 
-                ${!pending.mappingId ? 'disabled' : ''}
-                onclick="confirmInternalOESelection('${oeKey}')"
-                class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${pending.mappingId 
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 cursor-pointer' 
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
-                <i class="fa-solid fa-lock"></i>
-                <span>Confirm ${oeTitle}</span>
-              </button>
             `}
           </div>
         `}
