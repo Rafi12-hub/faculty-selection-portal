@@ -678,7 +678,10 @@ function renderSubjectsList() {
               ` : subjects.map(s => `
                 <tr class="hover:bg-slate-50/80 transition-colors">
                   <td class="py-3.5 px-6">
-                    <div class="font-bold text-slate-900">${s.name}</div>
+                    <div class="font-bold text-slate-900 flex items-center gap-2">
+                      <span>${s.name}</span>
+                      ${s.elective_group === 'OE1' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">Open Elective – I</span>' : (s.elective_group === 'OE2' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200">Open Elective – II</span>' : '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">Core</span>')}
+                    </div>
                     <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.code} &bull; ${s.credits} Credits</div>
                   </td>
                   <td class="py-3.5 px-6">
@@ -761,6 +764,14 @@ function openAddSubjectModal() {
             <input type="number" id="sub-credits" value="3" min="1" max="10" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
           </div>
         </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Subject Type / Elective Classification</label>
+          <select id="sub-elective-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+            <option value="">Core Curriculum Subject</option>
+            <option value="OE1">Open Elective – I (OE1)</option>
+            <option value="OE2">Open Elective – II (OE2)</option>
+          </select>
+        </div>
         <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
           <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-semibold">Cancel</button>
           <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md">Create Subject</button>
@@ -779,6 +790,7 @@ async function submitAddSubject(e) {
     semester: parseInt(document.getElementById('sub-sem').value, 10),
     department: document.getElementById('sub-dept').value.trim(),
     credits: parseInt(document.getElementById('sub-credits').value, 10),
+    elective_group: document.getElementById('sub-elective-group') ? (document.getElementById('sub-elective-group').value || null) : null,
     status: 'ACTIVE'
   };
 
@@ -835,6 +847,14 @@ function openEditSubjectModal(id) {
             <input type="number" id="edit-sub-credits" value="${s.credits}" min="1" max="10" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
           </div>
         </div>
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Subject Type / Elective Classification</label>
+          <select id="edit-sub-elective-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
+            <option value="" ${!s.elective_group ? 'selected' : ''}>Core Curriculum Subject</option>
+            <option value="OE1" ${s.elective_group === 'OE1' ? 'selected' : ''}>Open Elective – I (OE1)</option>
+            <option value="OE2" ${s.elective_group === 'OE2' ? 'selected' : ''}>Open Elective – II (OE2)</option>
+          </select>
+        </div>
         <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
           <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-semibold">Cancel</button>
           <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md">Update Subject</button>
@@ -853,6 +873,7 @@ async function submitEditSubject(e, id) {
     semester: parseInt(document.getElementById('edit-sub-sem').value, 10),
     department: document.getElementById('edit-sub-dept').value.trim(),
     credits: parseInt(document.getElementById('edit-sub-credits').value, 10),
+    elective_group: document.getElementById('edit-sub-elective-group') ? (document.getElementById('edit-sub-elective-group').value || null) : null,
     status: 'ACTIVE'
   };
 

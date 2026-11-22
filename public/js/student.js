@@ -36,6 +36,54 @@ function resolveActiveRound(roundsList, userGroup) {
   return roundsList.find(r => r.target_group === userGroup) || roundsList.find(r => r.target_group === 'ALL') || roundsList[0];
 }
 
+let PENDING_OE_INTERNAL = {
+  'OE1': { subjectId: null, mappingId: null },
+  'OE2': { subjectId: null, mappingId: null }
+};
+
+function selectInternalOESubject(oeKey, subjectId) {
+  if (!PENDING_OE_INTERNAL[oeKey]) {
+    PENDING_OE_INTERNAL[oeKey] = { subjectId: null, mappingId: null };
+  }
+  PENDING_OE_INTERNAL[oeKey].subjectId = subjectId;
+  PENDING_OE_INTERNAL[oeKey].mappingId = null;
+  renderStudentSubjects();
+}
+
+function selectInternalOEMapping(oeKey, mappingId) {
+  if (!PENDING_OE_INTERNAL[oeKey]) {
+    PENDING_OE_INTERNAL[oeKey] = { subjectId: null, mappingId: null };
+  }
+  PENDING_OE_INTERNAL[oeKey].mappingId = mappingId;
+  renderStudentSubjects();
+}
+
+function confirmInternalOESelection(oeKey) {
+  if (!ACTIVE_ROUND || ACTIVE_ROUND.status !== 'ACTIVE') {
+    showToast('Selection round is not currently active. Please wait for the administrator to start live selection.', 'warning');
+    return;
+  }
+  const pending = PENDING_OE_INTERNAL[oeKey];
+  if (!pending || !pending.mappingId) {
+    showToast('Please select a subject and choose an available faculty member first.', 'warning');
+    return;
+  }
+  const mapping = STUDENT_MAPPINGS.find(m => m.id === pending.mappingId);
+  const subject = STUDENT_SUBJECTS.find(s => s.id === pending.subjectId);
+  if (!mapping || !subject) return;
+
+  confirmFacultyReservation(
+    mapping.id,
+    mapping.faculty_name,
+    subject.name,
+    subject.code
+  );
+}
+
+window.selectInternalOESubject = selectInternalOESubject;
+window.selectInternalOEMapping = selectInternalOEMapping;
+window.confirmInternalOESelection = confirmInternalOESelection;
+
 async function initStudentPortal() {
   if (!STATE.student) return;
 
@@ -58,16 +106,10 @@ async function initStudentPortal() {
 async function refreshStudentLiveSeats() {
   if (!STATE.student || STATE.activeStudentTab !== 'subjects') return;
   try {
-    const is3rdYear = STATE.student && STATE.student.academic_year === 3;
-    const pollPromises = [
+    const [mapRes, roundsRes] = await Promise.all([
       api.get('/api/mappings'),
       api.get('/api/rounds')
-    ];
-    if (is3rdYear) {
-      pollPromises.push(api.get('/api/open-electives'));
-    }
-
-    const [mapRes, roundsRes, oeRes] = await Promise.all(pollPromises);
+    ]);
 
     const prevRoundStatus = ACTIVE_ROUND ? ACTIVE_ROUND.status : null;
     const userGroup = STATE.student ? STATE.student.section : null;
@@ -166,7 +208,7 @@ async function loadStudentData() {
       roundBadge.classList.add('hidden');
     }
 
-    // 2. Fetch My Selections, Subjects, Mappings, and if 3rd Year Open Electives
+    // 2. Fetch My Selections, Subjects, Mappings
     const [selRes, subRes, mapRes] = await Promise.all([
       api.get('/api/selections/my'),
       api.get('/api/subjects'),
@@ -177,30 +219,11 @@ async function loadStudentData() {
     STUDENT_SUBJECTS = subRes ? subRes.subjects : [];
     STUDENT_MAPPINGS = mapRes ? mapRes.mappings : [];
 
-    if (is3rdYear) {
-      try {
-        const [oeRes, myOeRes] = await Promise.all([
-          api.get('/api/open-electives'),
-          api.get('/api/open-electives/my')
-        ]);
-        STUDENT_OE_DATA = (oeRes && oeRes.success) ? oeRes.electives : [];
-        STUDENT_OE_MY = myOeRes || null;
-      } catch (oeErr) {
-        console.warn('Open electives fetch notice:', oeErr);
-        STUDENT_OE_DATA = [];
-        STUDENT_OE_MY = null;
-      }
-    } else {
-      STUDENT_OE_DATA = [];
-      STUDENT_OE_MY = null;
-    }
-
     // Update count badge across all confirmed courses
-    const confirmedRegularCount = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED').length;
-    const confirmedOeCount = (STUDENT_OE_MY && STUDENT_OE_MY.registrations) ? STUDENT_OE_MY.registrations.length : 0;
+    const confirmedCount = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED').length;
     const badgeEl = document.getElementById('stu-confirmed-badge');
     if (badgeEl) {
-      badgeEl.textContent = confirmedRegularCount + confirmedOeCount;
+      badgeEl.textContent = confirmedCount;
     }
 
     renderStudentSubjects();
@@ -238,10 +261,11 @@ function renderStudentSubjects() {
   if (!container) return;
 
   const is3rdYear = STATE.student && STATE.student.academic_year === 3;
-  const hasRegularSubjects = STUDENT_SUBJECTS && STUDENT_SUBJECTS.length > 0;
-  const hasOpenElectives = is3rdYear && STUDENT_OE_DATA && STUDENT_OE_DATA.length > 0;
+  const coreSubjects = STUDENT_SUBJECTS.filter(s => (!s.elective_group || s.elective_group === 'NONE') && s.status === 'ACTIVE');
+  const oe1Subjects = is3rdYear ? STUDENT_SUBJECTS.filter(s => s.elective_group === 'OE1' && s.status === 'ACTIVE') : [];
+  const oe2Subjects = is3rdYear ? STUDENT_SUBJECTS.filter(s => s.elective_group === 'OE2' && s.status === 'ACTIVE') : [];
 
-  if (!hasRegularSubjects && !hasOpenElectives) {
+  if (coreSubjects.length === 0 && oe1Subjects.length === 0 && oe2Subjects.length === 0) {
     container.innerHTML = `
       <div class="py-16 text-center bg-white rounded-2xl border border-slate-200">
         <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-2xl mb-3">
@@ -332,7 +356,7 @@ function renderStudentSubjects() {
   `;
 
   // 1. Regular Core Subjects Cards
-  const regularSubjectsHtml = STUDENT_SUBJECTS.map((subject, idx) => {
+  const regularSubjectsHtml = coreSubjects.map((subject, idx) => {
     const confirmedSelection = STUDENT_SELECTIONS.find(
       s => s.subject_id === subject.id && s.status === 'CONFIRMED'
     );
@@ -374,7 +398,7 @@ function renderStudentSubjects() {
         <div class="space-y-2.5 pt-1">
           ${subjectMappings.length === 0 ? `
             <div class="p-4 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
-              No faculty assigned to this subject yet.
+              No faculty assigned to this subject for your section yet.
             </div>
           ` : subjectMappings.map(m => {
             const isConfirmedForThis = hasSelection && confirmedSelection.mapping_id === m.id;
@@ -488,198 +512,195 @@ function renderStudentSubjects() {
     `;
   }).join('');
 
-  // 2. Open Electives Cards for 3rd Year Students
-  let oeCardsHtml = '';
-  if (is3rdYear && STUDENT_OE_DATA && STUDENT_OE_DATA.length > 0) {
-    oeCardsHtml = STUDENT_OE_DATA.map((elective, elIdx) => {
-      const confirmedReg = (STUDENT_OE_MY && STUDENT_OE_MY.registrations)
-        ? STUDENT_OE_MY.registrations.find(r => r.elective_id === elective.id)
-        : null;
-      const hasSelection = !!confirmedReg;
-      const pending = PENDING_OE_SELECTIONS[elective.id] || { subjectId: null, assignmentId: null };
-      const subjects = elective.subjects || [];
+  // 2. Open Electives Cards (Subject in Subject for Group A & Group B)
+  function buildOECardHtml(oeKey, oeTitle, oeSubList, cardIndex) {
+    if (!oeSubList || oeSubList.length === 0) return '';
+    const confirmedSel = STUDENT_SELECTIONS.find(sel => {
+      const sub = STUDENT_SUBJECTS.find(s => s.id === sel.subject_id);
+      return sub && sub.elective_group === oeKey && sel.status === 'CONFIRMED';
+    });
+    const hasSelection = !!confirmedSel;
 
-      // Auto-select first subject if not set
-      const currentSubjectId = pending.subjectId || (subjects.length > 0 ? subjects[0].id : null);
-      if (!pending.subjectId && currentSubjectId) {
-        pending.subjectId = currentSubjectId;
-        PENDING_OE_SELECTIONS[elective.id] = pending;
-      }
+    let pending = PENDING_OE_INTERNAL[oeKey];
+    if (!pending) {
+      pending = { subjectId: oeSubList[0].id, mappingId: null };
+      PENDING_OE_INTERNAL[oeKey] = pending;
+    }
+    if (!pending.subjectId) {
+      pending.subjectId = oeSubList[0].id;
+    }
 
-      const currentSubject = subjects.find(s => s.id === currentSubjectId) || subjects[0];
-      const facultyAssignments = currentSubject ? (currentSubject.faculty_assignments || []) : [];
-      const cardNum = STUDENT_SUBJECTS.length + elIdx + 1;
+    const currentSubId = pending.subjectId;
+    const currentSubject = oeSubList.find(s => s.id === currentSubId) || oeSubList[0];
+    const mappingsForThisGroup = STUDENT_MAPPINGS.filter(m => m.subject_id === currentSubId && m.status === 'ACTIVE');
 
-      return `
-        <div id="oe-card-${elective.id}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-indigo-200 ring-2 ring-indigo-500/10'} shadow-sm p-6 space-y-4 transition-all">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px]">OPEN ELECTIVE</span>
-                <h3 class="text-base sm:text-lg font-bold text-slate-900">${cardNum}. ${elective.name}</h3>
-              </div>
-              <p class="text-xs text-slate-500 italic mt-0.5 font-medium">Select 1 Subject and 1 Faculty from the available options.</p>
+    return `
+      <div id="oe-card-${oeKey}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-indigo-200 ring-2 ring-indigo-500/10'} shadow-sm p-6 space-y-4 transition-all">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px]">OPEN ELECTIVE</span>
+              <h3 class="text-base sm:text-lg font-bold text-slate-900">${cardIndex}. Subject: ${oeTitle}</h3>
             </div>
-            ${hasSelection ? `
-              <span class="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shadow-sm">
-                <i class="fa-solid fa-circle-check text-emerald-600"></i> Confirmed
-              </span>
-            ` : `
-              <span class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
-                Required
-              </span>
-            `}
+            <p class="text-xs text-slate-500 italic mt-0.5 font-medium">Select 1 Subject from the options below and mark 1 faculty member.</p>
           </div>
-
           ${hasSelection ? `
-            <div class="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div class="text-[10px] font-bold text-emerald-700 uppercase">Confirmed Course &amp; Faculty</div>
-                <div class="text-sm font-bold text-slate-900 mt-0.5">${confirmedReg.subject_name}</div>
-                <div class="text-xs text-indigo-700 font-semibold mt-0.5">Faculty: ${confirmedReg.faculty_name}</div>
-              </div>
-              <div class="text-[11px] text-slate-500 text-right">
-                Confirmed on ${new Date(confirmedReg.registered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            </div>
+            <span class="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5 shadow-sm">
+              <i class="fa-solid fa-circle-check text-emerald-600"></i> Confirmed
+            </span>
           ` : `
-            <!-- Step 1: Subject Selection Pills -->
-            <div class="space-y-2">
-              <div class="text-xs font-bold text-slate-700 flex items-center gap-2">
-                <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">1</span>
-                <span>Choose Subject:</span>
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                ${subjects.map(s => {
-                  const isSubSelected = s.id === currentSubjectId;
-                  return `
-                    <div onclick="selectOESubject(${elective.id}, ${s.id})" class="p-3 rounded-xl border text-xs cursor-pointer transition-all ${isSubSelected ? 'border-indigo-600 bg-indigo-50/70 font-bold text-indigo-900 shadow-sm' : 'border-slate-200 bg-white hover:border-indigo-300 text-slate-700'}">
-                      <div class="flex items-center justify-between">
-                        <span class="truncate">${s.subject_name}</span>
-                        ${isSubSelected ? '<i class="fa-solid fa-circle-check text-indigo-600 text-xs"></i>' : ''}
-                      </div>
-                      ${s.description ? `<p class="text-[10px] text-slate-500 font-normal line-clamp-1 mt-0.5">${s.description}</p>` : ''}
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            </div>
-
-            <!-- Step 2: Faculty Selection Radio Ovals with 3-Color Indicators -->
-            <div class="space-y-2 pt-2 border-t border-slate-100">
-              <div class="text-xs font-bold text-slate-700 flex items-center gap-2">
-                <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">2</span>
-                <span>Choose Faculty for ${currentSubject ? currentSubject.subject_name : 'Selected Subject'}:</span>
-              </div>
-              <div class="space-y-2.5">
-                ${facultyAssignments.length === 0 ? `
-                  <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-                    No faculty assigned to this subject yet. Please pick another subject.
-                  </div>
-                ` : facultyAssignments.map(fa => {
-                  const isFull = fa.color === 'red' || fa.status_label === 'Faculty Capacity Reached';
-                  const isFillingFast = fa.color === 'yellow' || fa.status_label === 'Filling Fast';
-                  const isSelected = pending.assignmentId === fa.assignment_id;
-
-                  let indicatorBg = 'bg-emerald-500';
-                  let statusText = 'Available';
-                  if (isFull) {
-                    indicatorBg = 'bg-rose-500';
-                    statusText = 'Faculty Capacity Reached';
-                  } else if (isFillingFast) {
-                    indicatorBg = 'bg-amber-500 animate-pulse';
-                    statusText = 'Filling Fast';
-                  }
-
-                  return `
-                    <div onclick="${(isLiveActive && !isFull) ? `selectOEFaculty(${elective.id}, ${fa.assignment_id})` : ''}" class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25' : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))}">
-                      <div class="flex items-center gap-3.5 min-w-0">
-                        <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
-                          ${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
-                        </div>
-                        <div class="min-w-0">
-                          <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
-                            <span>${fa.faculty_name}</span>
-                            <span class="w-2.5 h-2.5 rounded-full ${indicatorBg} flex-shrink-0"></span>
-                          </div>
-                          <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
-                            <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
-                            <span>${statusText}</span>
-                          </div>
-                          <div class="text-[11px] text-slate-500 truncate mt-0.5">
-                            ${fa.designation || 'Department Faculty'} &bull; ${fa.department || 'CSE'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="flex items-center gap-2 flex-shrink-0 pl-2">
-                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isFull ? 'bg-rose-100 text-rose-700 border border-rose-300' : (isFillingFast ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300')}">
-                          <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
-                          <span>${statusText}</span>
-                        </span>
-                      </div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            </div>
-
-            <!-- Step 3: Confirm Card Footer -->
-            <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              ${!isLiveActive ? `
-                <div class="text-xs text-amber-700 font-medium flex items-center gap-1.5">
-                  <i class="fa-solid fa-lock text-amber-600"></i>
-                  <span>Waiting for administrator to start live selection.</span>
-                </div>
-                <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 flex items-center gap-2">
-                  <i class="fa-solid fa-lock"></i>
-                  <span>Selection Locked</span>
-                </button>
-              ` : `
-                <div class="text-xs text-slate-500">
-                  ${pending.assignmentId 
-                    ? '<span class="text-indigo-700 font-bold"><i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> Faculty selected. Ready to confirm.</span>'
-                    : 'Choose a faculty above to lock this elective.'}
-                </div>
-                <button 
-                  ${!pending.assignmentId ? 'disabled' : ''}
-                  onclick="confirmOESelection(${elective.id})"
-                  class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${pending.assignmentId 
-                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 cursor-pointer' 
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
-                  <i class="fa-solid fa-lock"></i>
-                  <span>Confirm ${elective.name}</span>
-                </button>
-              `}
-            </div>
+            <span class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">
+              Required
+            </span>
           `}
         </div>
-      `;
-    }).join('');
+
+        ${hasSelection ? `
+          <div class="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div class="text-[10px] font-bold text-emerald-700 uppercase">Confirmed Course &amp; Faculty</div>
+              <div class="text-sm font-bold text-slate-900 mt-0.5">${confirmedSel.subject_name}</div>
+              <div class="text-xs text-indigo-700 font-semibold mt-0.5">Faculty: ${confirmedSel.faculty_name}</div>
+            </div>
+            <div class="text-[11px] text-slate-500 text-right">
+              Confirmed on ${new Date(confirmedSel.reserved_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        ` : `
+          <!-- Step 1: Choose Subject in Subject -->
+          <div class="space-y-2">
+            <div class="text-xs font-bold text-slate-700 flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">1</span>
+              <span>Choose Subject:</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              ${oeSubList.map(s => {
+                const isSelected = s.id === currentSubId;
+                return `
+                  <div onclick="selectInternalOESubject('${oeKey}', ${s.id})" class="p-3 rounded-xl border text-xs cursor-pointer transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/70 font-bold text-indigo-900 shadow-sm' : 'border-slate-200 bg-white hover:border-indigo-300 text-slate-700'}">
+                    <div class="flex items-center justify-between">
+                      <span class="truncate">${s.name}</span>
+                      ${isSelected ? '<i class="fa-solid fa-circle-check text-indigo-600 text-xs"></i>' : ''}
+                    </div>
+                    <div class="mono-font text-[10px] text-slate-400 mt-0.5">${s.code}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Step 2: Choose Faculty Mapped to this Subject for student's group (Group A or Group B) -->
+          <div class="space-y-2 pt-2 border-t border-slate-100">
+            <div class="text-xs font-bold text-slate-700 flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">2</span>
+              <span>Choose Faculty for ${currentSubject ? currentSubject.name : 'Selected Subject'} (${STATE.student.section === 'Group 1' ? 'Group A: 501–5E2' : (STATE.student.section === 'Group 2' ? 'Group B: 5E3–5KP' : STATE.student.section)}):</span>
+            </div>
+            <div class="space-y-2.5">
+              ${mappingsForThisGroup.length === 0 ? `
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                  No faculty mapped to this subject for your section yet.
+                </div>
+              ` : mappingsForThisGroup.map(m => {
+                const isFull = m.availability_status === 'FULL';
+                const isFillingFast = m.availability_status === 'FILLING_FAST';
+                const isSelected = pending.mappingId === m.id;
+
+                let indicatorBg = 'bg-emerald-500';
+                let statusText = 'Available';
+                if (isFull) {
+                  indicatorBg = 'bg-rose-500';
+                  statusText = 'Faculty Capacity Reached';
+                } else if (isFillingFast) {
+                  indicatorBg = 'bg-amber-500 animate-pulse';
+                  statusText = 'Filling Fast';
+                }
+
+                return `
+                  <div onclick="${(isLiveActive && !isFull) ? `selectInternalOEMapping('${oeKey}', ${m.id})` : ''}" class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25' : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))}">
+                    <div class="flex items-center gap-3.5 min-w-0">
+                      <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
+                        ${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
+                      </div>
+                      <div class="min-w-0">
+                        <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
+                          <span>${m.faculty_name}</span>
+                          <span class="w-2.5 h-2.5 rounded-full ${indicatorBg} flex-shrink-0"></span>
+                        </div>
+                        <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
+                          <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
+                          <span>${statusText}</span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 truncate mt-0.5">
+                          ${m.faculty_designation || 'Department Faculty'} &bull; ${m.faculty_qualification || 'M.Tech / Ph.D'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-shrink-0 pl-2">
+                      <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isFull ? 'bg-rose-100 text-rose-700 border border-rose-300' : (isFillingFast ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300')}">
+                        <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
+                        <span>${statusText}</span>
+                      </span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Step 3: Confirm Card Footer -->
+          <div class="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            ${!isLiveActive ? `
+              <div class="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+                <i class="fa-solid fa-lock text-amber-600"></i>
+                <span>Waiting for administrator to start live selection.</span>
+              </div>
+              <button disabled class="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-lock"></i>
+                <span>Selection Locked</span>
+              </button>
+            ` : `
+              <div class="text-xs text-slate-500">
+                ${pending.mappingId 
+                  ? '<span class="text-indigo-700 font-bold"><i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> Faculty selected. Ready to confirm.</span>'
+                  : 'Choose a faculty above to lock this elective.'}
+              </div>
+              <button 
+                ${!pending.mappingId ? 'disabled' : ''}
+                onclick="confirmInternalOESelection('${oeKey}')"
+                class="px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${pending.mappingId 
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/25 cursor-pointer' 
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}">
+                <i class="fa-solid fa-lock"></i>
+                <span>Confirm ${oeTitle}</span>
+              </button>
+            `}
+          </div>
+        `}
+      </div>
+    `;
   }
 
-  // Calculate combined progress
-  const totalCoreSubjects = STUDENT_SUBJECTS.length;
-  const totalOeElectives = (is3rdYear && STUDENT_OE_DATA) ? STUDENT_OE_DATA.length : 0;
-  const totalAllCourses = totalCoreSubjects + totalOeElectives;
+  const oeCardsHtml = buildOECardHtml('OE1', 'Open Elective – I', oe1Subjects, coreSubjects.length + 1) +
+                      buildOECardHtml('OE2', 'Open Elective – II', oe2Subjects, coreSubjects.length + 2);
 
-  const confirmedCoreCount = STUDENT_SUBJECTS.filter(sub => 
+  // Calculate combined progress
+  const totalAllCourses = coreSubjects.length + (oe1Subjects.length > 0 ? 1 : 0) + (oe2Subjects.length > 0 ? 1 : 0);
+  const confirmedCoreCount = coreSubjects.filter(sub => 
     STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED')
   ).length;
-  const confirmedOeCount = (STUDENT_OE_MY && STUDENT_OE_MY.registrations) ? STUDENT_OE_MY.registrations.length : 0;
-  const totalConfirmed = confirmedCoreCount + confirmedOeCount;
+  const confirmedOe1 = oe1Subjects.some(sub => STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED'));
+  const confirmedOe2 = oe2Subjects.some(sub => STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED'));
+  const totalConfirmed = confirmedCoreCount + (confirmedOe1 ? 1 : 0) + (confirmedOe2 ? 1 : 0);
 
-  const newlySelectedCoreCount = STUDENT_SUBJECTS.filter(sub => {
+  const pendingCoreCount = coreSubjects.filter(sub => {
     const hasConf = STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED');
     return !hasConf && PENDING_SELECTIONS[sub.id];
   }).length;
+  const pendingOe1Count = (!confirmedOe1 && PENDING_OE_INTERNAL['OE1'] && PENDING_OE_INTERNAL['OE1'].mappingId) ? 1 : 0;
+  const pendingOe2Count = (!confirmedOe2 && PENDING_OE_INTERNAL['OE2'] && PENDING_OE_INTERNAL['OE2'].mappingId) ? 1 : 0;
 
-  const newlySelectedOeCount = (is3rdYear && STUDENT_OE_DATA) ? STUDENT_OE_DATA.filter(e => {
-    const hasConf = (STUDENT_OE_MY && STUDENT_OE_MY.registrations) ? STUDENT_OE_MY.registrations.some(r => r.elective_id === e.id) : false;
-    return !hasConf && PENDING_OE_SELECTIONS[e.id] && PENDING_OE_SELECTIONS[e.id].assignmentId;
-  }).length : 0;
-
-  const totalFilled = totalConfirmed + newlySelectedCoreCount + newlySelectedOeCount;
+  const totalFilled = totalConfirmed + pendingCoreCount + pendingOe1Count + pendingOe2Count;
   const isAllFilled = totalFilled >= totalAllCourses && totalAllCourses > 0;
   const remaining = totalAllCourses - totalFilled;
 
@@ -702,7 +723,14 @@ function renderStudentSubjects() {
         </div>
 
         <div class="flex items-center gap-3">
-          ${isAllFilled ? `
+          ${(pendingCoreCount + pendingOe1Count + pendingOe2Count > 0 && isLiveActive) ? `
+            <button 
+              onclick="openBatchConfirmationModal()"
+              class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30 cursor-pointer">
+              <i class="fa-solid fa-lock text-sm"></i>
+              <span>Confirm All Selected (${pendingCoreCount + pendingOe1Count + pendingOe2Count})</span>
+            </button>
+          ` : (isAllFilled ? `
             <button 
               onclick="switchStudentTab('selections')"
               class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 cursor-pointer">
@@ -711,7 +739,7 @@ function renderStudentSubjects() {
             </button>
           ` : `
             <span class="text-xs font-semibold text-slate-500">${remaining} courses to choose</span>
-          `}
+          `)}
         </div>
       </div>
     </div>
@@ -725,7 +753,9 @@ function openBatchConfirmationModal() {
   const chosenMappings = [];
   const subjectsToConfirm = [];
 
-  for (const subject of STUDENT_SUBJECTS) {
+  // 1. Regular Core Subjects
+  const coreSubjects = STUDENT_SUBJECTS.filter(s => (!s.elective_group || s.elective_group === 'NONE') && s.status === 'ACTIVE');
+  for (const subject of coreSubjects) {
     const isAlreadyConfirmed = STUDENT_SELECTIONS.find(s => s.subject_id === subject.id && s.status === 'CONFIRMED');
     if (!isAlreadyConfirmed) {
       const mappingId = PENDING_SELECTIONS[subject.id];
@@ -741,6 +771,46 @@ function openBatchConfirmationModal() {
           });
         }
       }
+    }
+  }
+
+  // 2. Open Elective – I
+  const confirmedOe1 = STUDENT_SELECTIONS.some(s => {
+    const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
+    return sub && sub.elective_group === 'OE1' && s.status === 'CONFIRMED';
+  });
+  if (!confirmedOe1 && PENDING_OE_INTERNAL['OE1'] && PENDING_OE_INTERNAL['OE1'].mappingId) {
+    const p = PENDING_OE_INTERNAL['OE1'];
+    const mapping = STUDENT_MAPPINGS.find(m => m.id === p.mappingId);
+    const subject = STUDENT_SUBJECTS.find(s => s.id === p.subjectId);
+    if (mapping && subject) {
+      chosenMappings.push(mapping.id);
+      subjectsToConfirm.push({
+        subjectName: `[Open Elective – I] ${subject.name}`,
+        subjectCode: subject.code,
+        facultyName: mapping.faculty_name,
+        facultyDesignation: mapping.faculty_designation || mapping.designation
+      });
+    }
+  }
+
+  // 3. Open Elective – II
+  const confirmedOe2 = STUDENT_SELECTIONS.some(s => {
+    const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
+    return sub && sub.elective_group === 'OE2' && s.status === 'CONFIRMED';
+  });
+  if (!confirmedOe2 && PENDING_OE_INTERNAL['OE2'] && PENDING_OE_INTERNAL['OE2'].mappingId) {
+    const p = PENDING_OE_INTERNAL['OE2'];
+    const mapping = STUDENT_MAPPINGS.find(m => m.id === p.mappingId);
+    const subject = STUDENT_SUBJECTS.find(s => s.id === p.subjectId);
+    if (mapping && subject) {
+      chosenMappings.push(mapping.id);
+      subjectsToConfirm.push({
+        subjectName: `[Open Elective – II] ${subject.name}`,
+        subjectCode: subject.code,
+        facultyName: mapping.faculty_name,
+        facultyDesignation: mapping.faculty_designation || mapping.designation
+      });
     }
   }
 
@@ -806,11 +876,28 @@ async function executeBatchReservation() {
   }
 
   const mappingIds = [];
-  for (const subject of STUDENT_SUBJECTS) {
+  const coreSubjects = STUDENT_SUBJECTS.filter(s => (!s.elective_group || s.elective_group === 'NONE') && s.status === 'ACTIVE');
+  for (const subject of coreSubjects) {
     const isAlreadyConfirmed = STUDENT_SELECTIONS.find(s => s.subject_id === subject.id && s.status === 'CONFIRMED');
     if (!isAlreadyConfirmed && PENDING_SELECTIONS[subject.id]) {
       mappingIds.push(PENDING_SELECTIONS[subject.id]);
     }
+  }
+
+  const confirmedOe1 = STUDENT_SELECTIONS.some(s => {
+    const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
+    return sub && sub.elective_group === 'OE1' && s.status === 'CONFIRMED';
+  });
+  if (!confirmedOe1 && PENDING_OE_INTERNAL['OE1'] && PENDING_OE_INTERNAL['OE1'].mappingId) {
+    mappingIds.push(PENDING_OE_INTERNAL['OE1'].mappingId);
+  }
+
+  const confirmedOe2 = STUDENT_SELECTIONS.some(s => {
+    const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
+    return sub && sub.elective_group === 'OE2' && s.status === 'CONFIRMED';
+  });
+  if (!confirmedOe2 && PENDING_OE_INTERNAL['OE2'] && PENDING_OE_INTERNAL['OE2'].mappingId) {
+    mappingIds.push(PENDING_OE_INTERNAL['OE2'].mappingId);
   }
 
   try {
@@ -821,6 +908,10 @@ async function executeBatchReservation() {
       showToast(res.message || 'All faculty choices confirmed successfully!', 'success');
       // Clear pending
       PENDING_SELECTIONS = {};
+      PENDING_OE_INTERNAL = {
+        'OE1': { subjectId: null, mappingId: null },
+        'OE2': { subjectId: null, mappingId: null }
+      };
       await loadStudentData();
       switchStudentTab('selections');
     }
@@ -1070,23 +1161,7 @@ function renderStudentSelections() {
   const container = document.getElementById('stu-selections-list');
   if (!container) return;
 
-  const regularConfirmed = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED');
-  const oeConfirmed = ((STUDENT_OE_MY && STUDENT_OE_MY.registrations) || []).map(r => ({
-    id: `oe-${r.id}`,
-    is_oe: true,
-    oe_id: r.id,
-    subject_id: r.subject_id,
-    subject_name: `${r.elective_name}: ${r.subject_name}`,
-    subject_code: r.subject_code || 'OPEN-ELECTIVE',
-    faculty_name: r.faculty_name,
-    faculty_code: r.faculty_code || 'FAC',
-    faculty_designation: r.faculty_designation || 'Department Faculty',
-    faculty_specialization: r.faculty_specialization || 'Open Elective Instructor',
-    reserved_at: r.registered_at,
-    status: 'CONFIRMED'
-  }));
-
-  const confirmed = [...regularConfirmed, ...oeConfirmed];
+  const confirmed = STUDENT_SELECTIONS.filter(s => s.status === 'CONFIRMED');
 
   if (confirmed.length === 0) {
     container.innerHTML = `
@@ -1148,7 +1223,7 @@ function renderStudentSelections() {
               </div>
               <div class="rounded-xl bg-slate-50 p-3">
                 <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Selected Subject</div>
-                <div class="mt-1 break-words text-sm font-bold text-slate-900">${s.subject_name}</div>
+                <div class="mt-1 break-words text-sm font-bold text-slate-900">${s.subject_elective_group ? `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-700 mr-1.5">${s.subject_elective_group === 'OE1' ? 'Open Elective – I' : 'Open Elective – II'}</span>` : ''}${s.subject_name}</div>
                 <div class="mono-font mt-0.5 text-[11px] text-slate-500">${s.subject_code}</div>
               </div>
               <div class="rounded-xl bg-slate-50 p-3">
@@ -1448,42 +1523,8 @@ let STUDENT_OE_MY = null;
 let PENDING_OE_SELECTIONS = {}; // { [electiveId]: { subjectId, assignmentId } }
 
 async function loadStudentOpenElectives() {
-  const container = document.getElementById('stu-oe-container');
-  if (!container) return;
-
-  try {
-    const [oeRes, myRes] = await Promise.all([
-      api.get('/api/open-electives'),
-      api.get('/api/open-electives/my')
-    ]);
-
-    STUDENT_OE_DATA = oeRes ? oeRes.electives : [];
-    STUDENT_OE_MY = myRes || null;
-
-    // Update nav badge
-    const badge = document.getElementById('stu-oe-badge');
-    if (badge && STUDENT_OE_MY) {
-      if (STUDENT_OE_MY.overall_status === 'REGISTRATION_COMPLETED') {
-        badge.className = 'text-xs bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full';
-        badge.innerHTML = '<i class="fa-solid fa-check mr-1"></i>Completed';
-      } else if (STUDENT_OE_MY.total_completed > 0) {
-        badge.className = 'text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full';
-        badge.textContent = `${STUDENT_OE_MY.total_completed} of ${STUDENT_OE_MY.total_required}`;
-      } else {
-        badge.className = 'text-xs bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-full';
-        badge.textContent = '3rd Year';
-      }
-    }
-
-    renderStudentOpenElectives();
-  } catch (err) {
-    console.error('Failed to load open electives:', err);
-    container.innerHTML = `
-      <div class="p-6 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-xs">
-        <i class="fa-solid fa-circle-exclamation mr-1"></i> ${err.message || 'Error loading open electives.'}
-      </div>
-    `;
-  }
+  // Legacy stub: Open electives are integrated directly into Eligible Subjects & Faculty Selection
+  return;
 }
 
 function renderStudentOpenElectives() {

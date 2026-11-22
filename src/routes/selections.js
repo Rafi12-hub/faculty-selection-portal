@@ -20,6 +20,7 @@ router.get('/my', requireStudent, (req, res) => {
         sub.id as subject_id,
         sub.code as subject_code,
         sub.name as subject_name,
+        sub.elective_group as subject_elective_group,
         sub.credits as subject_credits,
         sub.department as subject_department,
         f.id as faculty_id,
@@ -102,7 +103,7 @@ router.post('/reserve', requireStudent, (req, res) => {
         SELECT id, name, start_time, end_time, status, target_group
         FROM selection_rounds
         WHERE academic_year = ? AND semester = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
-        ORDER BY created_at DESC
+        ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 WHEN status = 'PAUSED' THEN 1 ELSE 2 END, created_at DESC
         LIMIT 1
       `).get(student.academic_year, student.semester, student.section);
 
@@ -126,16 +127,33 @@ router.post('/reserve', requireStudent, (req, res) => {
 
       const roundId = currentRound.id;
 
-      // 4. One selection per subject check: Students can select only ONE faculty member per subject
-      const existingSubjectSelection = db.prepare(`
-        SELECT s.id, f.name as faculty_name 
-        FROM selections s
-        JOIN faculty f ON s.faculty_id = f.id
-        WHERE s.student_id = ? AND s.subject_id = ? AND s.status = 'CONFIRMED'
-      `).get(student.id, mapping.subject_id);
+      // 4. One selection per subject / elective check
+      const subjectInfo = db.prepare('SELECT id, name, code, elective_group FROM subjects WHERE id = ?').get(mapping.subject_id);
 
-      if (existingSubjectSelection) {
-        throw new Error(`You have already selected ${existingSubjectSelection.faculty_name} for this subject (${mapping.subject_code}). Only one faculty member can be selected per subject.`);
+      if (subjectInfo && subjectInfo.elective_group) {
+        const existingElectiveSel = db.prepare(`
+          SELECT s.id, sub.name as subject_name, f.name as faculty_name 
+          FROM selections s
+          JOIN subjects sub ON s.subject_id = sub.id
+          JOIN faculty f ON s.faculty_id = f.id
+          WHERE s.student_id = ? AND sub.elective_group = ? AND s.status = 'CONFIRMED'
+        `).get(student.id, subjectInfo.elective_group);
+
+        if (existingElectiveSel) {
+          const oeTitle = subjectInfo.elective_group === 'OE1' ? 'Open Elective – I' : 'Open Elective – II';
+          throw new Error(`You have already completed your selection for ${oeTitle} with "${existingElectiveSel.subject_name}" (${existingElectiveSel.faculty_name}). Only one subject & faculty can be selected per open elective.`);
+        }
+      } else {
+        const existingSubjectSelection = db.prepare(`
+          SELECT s.id, f.name as faculty_name 
+          FROM selections s
+          JOIN faculty f ON s.faculty_id = f.id
+          WHERE s.student_id = ? AND s.subject_id = ? AND s.status = 'CONFIRMED'
+        `).get(student.id, mapping.subject_id);
+
+        if (existingSubjectSelection) {
+          throw new Error(`You have already selected ${existingSubjectSelection.faculty_name} for this subject (${mapping.subject_code}). Only one faculty member can be selected per subject.`);
+        }
       }
 
       // 5. Strict FCFS Capacity Check: Count active confirmed selections for this mapping
@@ -218,7 +236,7 @@ router.post('/reserve-batch', requireStudent, (req, res) => {
         SELECT id, name, start_time, end_time, status, target_group
         FROM selection_rounds
         WHERE academic_year = ? AND semester = ? AND (target_group = ? OR target_group = 'ALL' OR target_group IS NULL)
-        ORDER BY created_at DESC
+        ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 WHEN status = 'PAUSED' THEN 1 ELSE 2 END, created_at DESC
         LIMIT 1
       `).get(student.academic_year, student.semester, student.section);
 
@@ -271,17 +289,30 @@ router.post('/reserve-batch', requireStudent, (req, res) => {
           throw new Error(`Section Mismatch for ${mapping.subject_name}: Reserved for ${mapping.target_group}.`);
         }
 
-        // Check if student already selected this subject
-        const existing = db.prepare(`
-          SELECT sel.id, f.name as faculty_name
-          FROM selections sel
-          JOIN faculty f ON sel.faculty_id = f.id
-          WHERE sel.student_id = ? AND sel.subject_id = ? AND sel.status = 'CONFIRMED'
-        `).get(student.id, mapping.subject_id);
+        // Check if student already selected this subject or this elective group
+        const subInfo = db.prepare('SELECT id, elective_group FROM subjects WHERE id = ?').get(mapping.subject_id);
+        if (subInfo && subInfo.elective_group) {
+          const existingElective = db.prepare(`
+            SELECT sel.id, f.name as faculty_name
+            FROM selections sel
+            JOIN subjects s ON sel.subject_id = s.id
+            JOIN faculty f ON sel.faculty_id = f.id
+            WHERE sel.student_id = ? AND s.elective_group = ? AND sel.status = 'CONFIRMED'
+          `).get(student.id, subInfo.elective_group);
+          if (existingElective) {
+            continue;
+          }
+        } else {
+          const existing = db.prepare(`
+            SELECT sel.id, f.name as faculty_name
+            FROM selections sel
+            JOIN faculty f ON sel.faculty_id = f.id
+            WHERE sel.student_id = ? AND sel.subject_id = ? AND sel.status = 'CONFIRMED'
+          `).get(student.id, mapping.subject_id);
 
-        if (existing) {
-          // Already confirmed, skip or throw
-          continue;
+          if (existing) {
+            continue;
+          }
         }
 
         // Check available capacity

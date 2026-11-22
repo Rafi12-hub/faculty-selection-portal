@@ -158,7 +158,7 @@ router.get('/:id', (req, res) => {
 // Admin-only management endpoints below
 router.post('/', requireAdmin, (req, res) => {
   try {
-    const { code, name, academic_year, semester, department, credits, status } = req.body;
+    const { code, name, academic_year, semester, department, credits, status, elective_group } = req.body;
 
     if (!code || !code.trim()) {
       return res.status(400).json({ success: false, message: 'Subject Code is required.' });
@@ -181,10 +181,13 @@ router.post('/', requireAdmin, (req, res) => {
 
     const now = new Date().toISOString();
     const subStatus = status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const cleanElectiveGroup = (elective_group && ['OE1', 'OE2'].includes(elective_group.trim().toUpperCase()))
+      ? elective_group.trim().toUpperCase()
+      : null;
 
     const insert = db.prepare(`
-      INSERT INTO subjects (code, name, academic_year, semester, department, credits, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO subjects (code, name, academic_year, semester, department, credits, status, elective_group, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = insert.run(
@@ -195,6 +198,7 @@ router.post('/', requireAdmin, (req, res) => {
       department ? department.trim() : 'Computer Science & Engineering',
       credits ? parseInt(credits, 10) : 3,
       subStatus,
+      cleanElectiveGroup,
       now
     );
 
@@ -228,7 +232,7 @@ router.put('/:id', requireAdmin, (req, res) => {
       return res.status(404).json({ success: false, message: 'Subject not found.' });
     }
 
-    const { code, name, academic_year, semester, department, credits, status } = req.body;
+    const { code, name, academic_year, semester, department, credits, status, elective_group } = req.body;
 
     if (!code || !code.trim()) {
       return res.status(400).json({ success: false, message: 'Subject Code is required.' });
@@ -250,6 +254,9 @@ router.put('/:id', requireAdmin, (req, res) => {
     }
 
     const subStatus = status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const cleanElectiveGroup = (elective_group && ['OE1', 'OE2'].includes(elective_group.trim().toUpperCase()))
+      ? elective_group.trim().toUpperCase()
+      : (elective_group === '' || elective_group === 'NONE' ? null : existing.elective_group);
 
     const update = db.prepare(`
       UPDATE subjects SET
@@ -259,7 +266,8 @@ router.put('/:id', requireAdmin, (req, res) => {
         semester = ?,
         department = ?,
         credits = ?,
-        status = ?
+        status = ?,
+        elective_group = ?
       WHERE id = ?
     `);
 
@@ -271,6 +279,7 @@ router.put('/:id', requireAdmin, (req, res) => {
       department ? department.trim() : 'Computer Science & Engineering',
       credits ? parseInt(credits, 10) : 3,
       subStatus,
+      cleanElectiveGroup,
       subjectId
     );
 

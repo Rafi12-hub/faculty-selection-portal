@@ -174,6 +174,82 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_oe_faculty_subject ON open_elective_faculty_assignments(subject_id, is_active);
   `);
 
+  // Migration: Add elective_group and parent_subject_id to subjects table
+  try {
+    db.prepare("ALTER TABLE subjects ADD COLUMN elective_group TEXT DEFAULT NULL").run();
+  } catch (e) {}
+  try {
+    db.prepare("ALTER TABLE subjects ADD COLUMN parent_subject_id INTEGER REFERENCES subjects(id)").run();
+  } catch (e) {}
+
+  // Ensure Open Elective subjects exist directly in the subjects table
+  const seedOESubjects = [
+    // Open Elective – I
+    { code: 'OE301', name: 'DevOps Practices & Cloud Automation', elective_group: 'OE1', academic_year: 3, semester: 6 },
+    { code: 'OE302', name: 'Introduction to Cyber Security & Forensics', elective_group: 'OE1', academic_year: 3, semester: 6 },
+    { code: 'OE303', name: 'Data Science Essentials & Analytics', elective_group: 'OE1', academic_year: 3, semester: 6 },
+    // Open Elective – II
+    { code: 'OE304', name: 'Cloud Infrastructure & Kubernetes', elective_group: 'OE2', academic_year: 3, semester: 6 },
+    { code: 'OE305', name: 'Full Stack Development with MERN', elective_group: 'OE2', academic_year: 3, semester: 6 },
+    { code: 'OE306', name: 'Artificial Intelligence & Machine Learning', elective_group: 'OE2', academic_year: 3, semester: 6 }
+  ];
+
+  const nowTime = new Date().toISOString();
+  const insertSubStmt = db.prepare(`
+    INSERT INTO subjects (code, name, academic_year, semester, department, credits, status, elective_group, created_at)
+    VALUES (?, ?, ?, ?, 'Computer Science & Engineering', 3, 'ACTIVE', ?, ?)
+  `);
+  const updateSubElectiveStmt = db.prepare(`
+    UPDATE subjects SET elective_group = ? WHERE code = ?
+  `);
+
+  for (const s of seedOESubjects) {
+    const existing = db.prepare('SELECT id, elective_group FROM subjects WHERE code = ?').get(s.code);
+    if (!existing) {
+      insertSubStmt.run(s.code, s.name, s.academic_year, s.semester, s.elective_group, nowTime);
+    } else if (existing.elective_group !== s.elective_group) {
+      updateSubElectiveStmt.run(s.elective_group, s.code);
+    }
+  }
+
+  // Ensure mappings exist separately for Group 1 (Group A) and Group 2 (Group B)
+  const oeFacultyPairs = [
+    { code: 'OE301', facCodes: ['FAC001', 'FAC002', 'FAC003'] },
+    { code: 'OE302', facCodes: ['FAC005', 'FAC006', 'FAC007'] },
+    { code: 'OE303', facCodes: ['FAC004', 'FAC009', 'FAC010'] },
+    { code: 'OE304', facCodes: ['FAC011', 'FAC012', 'FAC013'] },
+    { code: 'OE305', facCodes: ['FAC014', 'FAC015', 'FAC016'] },
+    { code: 'OE306', facCodes: ['FAC008', 'FAC018', 'FAC019'] }
+  ];
+
+  const insertMappingStmt = db.prepare(`
+    INSERT OR IGNORE INTO faculty_subject_mappings (
+      faculty_id, subject_id, academic_year, semester, capacity, target_group, status, created_at
+    ) VALUES (?, ?, 3, 6, ?, ?, 'ACTIVE', ?)
+  `);
+
+  const groups = [
+    { name: 'Group 1', capacity: 78 },
+    { name: 'Group 2', capacity: 62 }
+  ];
+
+  for (const item of oeFacultyPairs) {
+    const sub = db.prepare('SELECT id FROM subjects WHERE code = ?').get(item.code);
+    if (!sub) continue;
+    for (const fCode of item.facCodes) {
+      const f = db.prepare('SELECT id FROM faculty WHERE faculty_code = ?').get(fCode);
+      if (!f) continue;
+      for (const grp of groups) {
+        insertMappingStmt.run(f.id, sub.id, grp.capacity, grp.name, nowTime);
+      }
+    }
+  }
+
+  // Ensure legacy placeholder subjects CS604 and CS605 are deactivated in favor of OE subjects
+  try {
+    db.prepare("UPDATE subjects SET status = 'INACTIVE' WHERE code IN ('CS604', 'CS605')").run();
+  } catch (e) {}
+
   // Ensure default administrator account exists
   const adminCheck = db.prepare('SELECT id FROM users WHERE role = ? LIMIT 1').get('ADMIN');
   if (!adminCheck) {
