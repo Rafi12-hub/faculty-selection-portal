@@ -42,12 +42,15 @@ function switchAdminTab(tabName) {
     case 'dashboard': loadAdminDashboard(); break;
     case 'open-electives': 
       ADMIN_DATA.mappingMode = 'oe';
-      switchAdminTab('mappings');
+      loadAdminMappings();
       break;
     case 'students': loadAdminStudents(); break;
     case 'faculty': loadAdminFaculty(); break;
     case 'subjects': loadAdminSubjects(); break;
-    case 'mappings': loadAdminMappings(); break;
+    case 'mappings': 
+      ADMIN_DATA.mappingMode = 'core';
+      loadAdminMappings(); 
+      break;
     case 'rounds': loadAdminRounds(); break;
     case 'live': loadAdminLiveSelections(); break;
     case 'reports': loadAdminReports(); break;
@@ -913,6 +916,16 @@ async function loadAdminMappings(mode = (ADMIN_DATA.mappingMode || 'core')) {
 
 function switchMappingMode(mode) {
   ADMIN_DATA.mappingMode = mode;
+  // Sync the top navigation bar highlighting
+  const navButtons = document.querySelectorAll('#admin-nav-bar button');
+  navButtons.forEach(btn => {
+    btn.className = 'px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 text-slate-600 hover:bg-slate-100';
+  });
+  const activeTabId = mode === 'oe' ? 'adm-nav-open-electives' : 'adm-nav-mappings';
+  const activeBtn = document.getElementById(activeTabId);
+  if (activeBtn) {
+    activeBtn.className = 'px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 bg-blue-600 text-white shadow-sm';
+  }
   renderMappingsList();
 }
 window.switchMappingMode = switchMappingMode;
