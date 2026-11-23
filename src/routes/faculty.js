@@ -395,4 +395,15 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// Force clean sync to the 45 authorized faculty
+router.all('/enforce-45', (req, res) => {
+  try {
+    const { enforce45 } = require('../../scripts/enforce_45_faculty');
+    const count = enforce45(db);
+    res.json({ success: true, message: `Successfully synchronized to exactly ${count} authorized faculty members.`, count });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
