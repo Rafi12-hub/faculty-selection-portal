@@ -4354,12 +4354,16 @@ async function loadAdminEmails(filter = null) {
   try {
     const curFilter = ADMIN_DATA.emailFilter || 'ALL';
     const curSearch = ADMIN_DATA.emailSearch || '';
-    const res = await api.get(`/api/emails/logs?status=${curFilter}&search=${encodeURIComponent(curSearch)}`);
+    const [res, configRes] = await Promise.all([
+      api.get(`/api/emails/logs?status=${curFilter}&search=${encodeURIComponent(curSearch)}`),
+      api.get('/api/emails/config')
+    ]);
 
     if (!res || !res.success) throw new Error('Could not fetch email delivery records.');
 
     ADMIN_DATA.emailLogs = res.logs || [];
     ADMIN_DATA.emailStats = res.stats || { total: 0, sent: 0, failed: 0, pending: 0 };
+    ADMIN_DATA.smtpConfig = configRes && configRes.config ? configRes.config : { isConfigured: false };
     renderAdminEmailsList();
   } catch (err) {
     container.innerHTML = `
@@ -4383,6 +4387,7 @@ function renderAdminEmailsList() {
   const stats = ADMIN_DATA.emailStats || { total: 0, sent: 0, failed: 0, pending: 0 };
   const filter = ADMIN_DATA.emailFilter || 'ALL';
   const searchTerm = ADMIN_DATA.emailSearch || '';
+  const smtp = ADMIN_DATA.smtpConfig || { isConfigured: false };
 
   const html = `
     <div class="space-y-6">
@@ -4397,7 +4402,15 @@ function renderAdminEmailsList() {
             Real-time audit trail and delivery tracking for automatic confirmation emails sent to students upon finalizing course and faculty choices.
           </p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="openSmtpSettingsModal()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer">
+            <i class="fa-solid fa-gear"></i>
+            <span>SMTP Settings</span>
+          </button>
+          <button onclick="openSendTestEmailModal()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition cursor-pointer">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Send Test Email</span>
+          </button>
           ${stats.failed > 0 ? `
             <button onclick="retryAllFailedEmails()" id="btn-retry-all-emails" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition">
               <i class="fa-solid fa-rotate-right"></i>
@@ -4410,6 +4423,51 @@ function renderAdminEmailsList() {
           </button>
         </div>
       </div>
+
+      <!-- Live SMTP Status Strip -->
+      ${smtp.isConfigured ? `
+        <div class="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-900 shadow-sm">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-emerald-200 text-emerald-800 flex items-center justify-center text-lg flex-shrink-0">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <div>
+              <div class="font-bold text-emerald-950 flex items-center gap-2">
+                <span>Live SMTP Connected &amp; Active</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-200/80 text-emerald-900">${smtp.host}:${smtp.port} (${smtp.user})</span>
+              </div>
+              <p class="text-emerald-800 mt-0.5 text-[11px]">
+                Confirmation emails are actively delivered to each student's official college inbox (<strong>&lt;reg_no&gt;@rgmcet.edu.in</strong>) when course selection is completed.
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="openSendTestEmailModal()" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-sm transition whitespace-nowrap cursor-pointer">
+              Test Connection
+            </button>
+          </div>
+        </div>
+      ` : `
+        <div class="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-sm">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-amber-200 text-amber-800 flex items-center justify-center text-lg flex-shrink-0">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+              <div class="font-bold text-amber-950">
+                Action Required: SMTP Server Not Configured Yet (Currently in Safe Simulation Mode)
+              </div>
+              <p class="text-amber-800 mt-0.5 text-[11px]">
+                The server is logging confirmation records in the database, but <strong>real emails cannot be delivered across the internet without your SMTP credentials</strong>. Connect your Gmail (with App Password) or college mail server below to start delivering live emails!
+              </p>
+            </div>
+          </div>
+          <button onclick="openSmtpSettingsModal()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shadow-md transition whitespace-nowrap cursor-pointer flex items-center gap-1.5">
+            <i class="fa-solid fa-key"></i>
+            <span>Connect SMTP Mail Server</span>
+          </button>
+        </div>
+      `}
 
       <!-- 4 Stat Summary Cards -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -4690,6 +4748,231 @@ function viewEmailError(errMsg, studentName, email) {
   });
 }
 
+function openSmtpSettingsModal() {
+  const cfg = ADMIN_DATA.smtpConfig || {};
+
+  openModal({
+    title: 'SMTP Mail Server Configuration',
+    maxWidth: 'max-w-xl',
+    body: `
+      <form id="form-smtp-settings" onsubmit="submitSmtpSettings(event)" class="space-y-4 py-1 text-xs">
+        <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-[11px] leading-relaxed">
+          <strong>Instant Live Delivery:</strong> Enter your SMTP server details to deliver official confirmation emails directly to students' college inboxes (<code>&lt;reg_no&gt;@rgmcet.edu.in</code>).
+        </div>
+
+        <!-- Quick Presets -->
+        <div class="flex items-center gap-2">
+          <span class="text-slate-500 font-semibold text-[11px]">Quick Presets:</span>
+          <button type="button" onclick="applySmtpPreset('gmail')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition cursor-pointer">
+            Gmail
+          </button>
+          <button type="button" onclick="applySmtpPreset('rgmcet')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition cursor-pointer">
+            RGMCET Mail Server
+          </button>
+          <button type="button" onclick="applySmtpPreset('outlook')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition cursor-pointer">
+            Outlook / Office 365
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="sm:col-span-2">
+            <label class="block font-bold text-slate-700 mb-1">SMTP Host / Server *</label>
+            <input type="text" id="smtp-host" required placeholder="e.g. smtp.gmail.com" value="${escapeQuote(cfg.host || '')}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Port *</label>
+            <input type="number" id="smtp-port" required placeholder="587" value="${cfg.port || 587}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">SMTP Username / Email *</label>
+            <input type="text" id="smtp-user" required placeholder="e.g. cse.office@rgmcet.edu.in" value="${escapeQuote(cfg.user || '')}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">
+              SMTP Password / App Password *
+              ${cfg.hasPass ? '<span class="text-emerald-600 font-semibold text-[10px] ml-1">(Password Saved)</span>' : ''}
+            </label>
+            <input type="password" id="smtp-pass" ${cfg.hasPass ? '' : 'required'} placeholder="${cfg.hasPass ? '•••••••••••••••• (Leave blank to keep saved)' : 'Enter 16-character App Password'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">From Sender Address</label>
+          <input type="text" id="smtp-from" placeholder='"RGMCET Faculty Selection" &lt;no-reply@rgmcet.edu.in&gt;' value="${escapeQuote(cfg.from || '"RGMCET Faculty Selection Portal" <no-reply@rgmcet.edu.in>')}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+        </div>
+
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2">
+          <input type="checkbox" id="smtp-secure" ${cfg.secure ? 'checked' : ''} class="w-4 h-4 rounded text-blue-600">
+          <label for="smtp-secure" class="text-xs text-slate-700 font-semibold cursor-pointer">
+            Use SSL/TLS (Check for Port 465; leave unchecked for STARTTLS Port 587)
+          </label>
+        </div>
+
+        <div class="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+          <strong>Tip for Gmail:</strong> Regular Google account passwords are not accepted by Google SMTP. You must create an <strong>App Password</strong> in your Google Account:
+          <span class="block text-slate-600 mt-1">1. Open Google Account &rarr; Security &rarr; 2-Step Verification.</span>
+          <span class="block text-slate-600">2. Go to "App Passwords", generate one for "FSSP", and paste the 16 characters into the password field above.</span>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold transition">
+            Cancel
+          </button>
+          <button type="submit" id="btn-save-smtp" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md shadow-blue-500/25 transition flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-floppy-disk"></i>
+            <span>Save &amp; Activate SMTP</span>
+          </button>
+        </div>
+      </form>
+    `
+  });
+}
+
+function applySmtpPreset(type) {
+  const hostEl = document.getElementById('smtp-host');
+  const portEl = document.getElementById('smtp-port');
+  const secureEl = document.getElementById('smtp-secure');
+
+  if (type === 'gmail') {
+    if (hostEl) hostEl.value = 'smtp.gmail.com';
+    if (portEl) portEl.value = '587';
+    if (secureEl) secureEl.checked = false;
+  } else if (type === 'rgmcet') {
+    if (hostEl) hostEl.value = 'mail.rgmcet.edu.in';
+    if (portEl) portEl.value = '465';
+    if (secureEl) secureEl.checked = true;
+  } else if (type === 'outlook') {
+    if (hostEl) hostEl.value = 'smtp.office365.com';
+    if (portEl) portEl.value = '587';
+    if (secureEl) secureEl.checked = false;
+  }
+}
+
+async function submitSmtpSettings(e) {
+  e.preventDefault();
+  const host = document.getElementById('smtp-host').value.trim();
+  const port = parseInt(document.getElementById('smtp-port').value, 10);
+  const user = document.getElementById('smtp-user').value.trim();
+  const pass = document.getElementById('smtp-pass').value.trim();
+  const from = document.getElementById('smtp-from').value.trim();
+  const secure = document.getElementById('smtp-secure').checked;
+
+  const btn = document.getElementById('btn-save-smtp');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Saving...</span>`;
+  }
+
+  try {
+    const res = await api.post('/api/emails/config', {
+      host,
+      port,
+      user,
+      pass,
+      from,
+      secure
+    });
+
+    closeModal();
+    showToast(res.message || 'SMTP settings activated successfully!', 'success');
+    await loadAdminEmails();
+  } catch (err) {
+    showToast(err.message || 'Failed to save SMTP settings.', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> <span>Save & Activate SMTP</span>`;
+    }
+  }
+}
+
+function openSendTestEmailModal() {
+  const cfg = ADMIN_DATA.smtpConfig || {};
+
+  openModal({
+    title: 'Send Live Test Confirmation Email',
+    maxWidth: 'max-w-md',
+    body: `
+      <form id="form-send-test-email" onsubmit="submitSendTestEmail(event)" class="space-y-4 py-2 text-xs">
+        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-[11px] leading-relaxed">
+          <strong>Immediate Inbox Test:</strong> Enter any valid email address (e.g. your personal Gmail or college email). A test message will be sent through your active SMTP mail server immediately.
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Target Test Recipient Email *</label>
+          <input type="email" id="test-email-target" required placeholder="e.g. yourname@gmail.com" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+          <p class="text-[10px] text-slate-400 mt-1">Check your inbox or spam folder right after clicking Send.</p>
+        </div>
+
+        <div id="test-email-status-container" class="hidden"></div>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold transition">
+            Close
+          </button>
+          <button type="submit" id="btn-submit-test-mail" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md shadow-emerald-500/25 transition flex items-center gap-2 cursor-pointer">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Send Test Email Now</span>
+          </button>
+        </div>
+      </form>
+    `
+  });
+}
+
+async function submitSendTestEmail(e) {
+  e.preventDefault();
+  const targetEmail = document.getElementById('test-email-target').value.trim();
+  const btn = document.getElementById('btn-submit-test-mail');
+  const statusContainer = document.getElementById('test-email-status-container');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Connecting &amp; Sending...</span>`;
+  }
+  if (statusContainer) {
+    statusContainer.classList.add('hidden');
+    statusContainer.innerHTML = '';
+  }
+
+  try {
+    const res = await api.post('/api/emails/test', { target_email: targetEmail });
+    if (statusContainer) {
+      statusContainer.classList.remove('hidden');
+      statusContainer.innerHTML = `
+        <div class="p-3 bg-emerald-100 border border-emerald-300 rounded-xl text-emerald-900 font-bold text-xs flex items-center gap-2">
+          <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i>
+          <span>${res.message || 'Test email delivered successfully! Please check your inbox.'}</span>
+        </div>
+      `;
+    }
+    showToast(res.message || 'Test email delivered!', 'success');
+  } catch (err) {
+    if (statusContainer) {
+      statusContainer.classList.remove('hidden');
+      statusContainer.innerHTML = `
+        <div class="p-3 bg-rose-50 border border-rose-300 rounded-xl text-rose-900 text-[11px] space-y-1">
+          <div class="font-bold flex items-center gap-1.5 text-rose-700">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>SMTP Delivery Error</span>
+          </div>
+          <div class="font-mono text-[10px] break-words text-rose-800 bg-white p-2 rounded border border-rose-200">
+            ${escapeQuote(err.message || 'Connection failed')}
+          </div>
+        </div>
+      `;
+    }
+    showToast(err.message || 'Failed to deliver test email.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> <span>Send Test Email Now</span>`;
+    }
+  }
+}
+
 // Global window exposure
 window.loadAdminEmails = loadAdminEmails;
 window.renderAdminEmailsList = renderAdminEmailsList;
@@ -4698,3 +4981,8 @@ window.resendEmailLog = resendEmailLog;
 window.resendStudentConfirmationEmail = resendStudentConfirmationEmail;
 window.retryAllFailedEmails = retryAllFailedEmails;
 window.viewEmailError = viewEmailError;
+window.openSmtpSettingsModal = openSmtpSettingsModal;
+window.applySmtpPreset = applySmtpPreset;
+window.submitSmtpSettings = submitSmtpSettings;
+window.openSendTestEmailModal = openSendTestEmailModal;
+window.submitSendTestEmail = submitSendTestEmail;

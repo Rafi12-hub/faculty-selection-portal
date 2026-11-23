@@ -2,10 +2,91 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../config/database');
 const { requireAdmin } = require('../middleware/auth');
-const { retryFailedEmail, resendStudentEmail } = require('../services/emailService');
+const { 
+  retryFailedEmail, 
+  resendStudentEmail, 
+  getSmtpConfig, 
+  saveSmtpConfig, 
+  sendTestEmail 
+} = require('../services/emailService');
 
 // All email routes require Admin authorization
 router.use(requireAdmin);
+
+/**
+ * GET /api/emails/config - Retrieve current SMTP configuration status
+ */
+router.get('/config', (req, res) => {
+  try {
+    const config = getSmtpConfig();
+    res.json({
+      success: true,
+      config: {
+        isConfigured: config.isConfigured,
+        host: config.host,
+        port: config.port,
+        user: config.user,
+        secure: config.secure,
+        from: config.from,
+        hasPass: config.hasPass
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching SMTP config:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * POST /api/emails/config - Save SMTP configuration
+ */
+router.post('/config', (req, res) => {
+  try {
+    const { host, port, user, pass, secure, from } = req.body;
+    const updated = saveSmtpConfig({ host, port, user, pass, secure, from });
+    res.json({
+      success: true,
+      message: 'SMTP settings saved successfully! Live email delivery is now active.',
+      config: {
+        isConfigured: updated.isConfigured,
+        host: updated.host,
+        port: updated.port,
+        user: updated.user,
+        secure: updated.secure,
+        from: updated.from,
+        hasPass: updated.hasPass
+      }
+    });
+  } catch (err) {
+    console.error('Error saving SMTP config:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * POST /api/emails/test - Send a live test email to verify credentials
+ */
+router.post('/test', async (req, res) => {
+  try {
+    const { target_email } = req.body;
+    if (!target_email || !target_email.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid recipient email address for testing.' });
+    }
+
+    const result = await sendTestEmail(target_email.trim());
+    res.json({
+      success: true,
+      message: result.message,
+      messageId: result.messageId
+    });
+  } catch (err) {
+    console.error('Error sending test email:', err);
+    res.status(400).json({
+      success: false,
+      message: err.message || 'SMTP connection failed. Please verify your host, port, user, and app password.'
+    });
+  }
+});
 
 /**
  * GET /api/emails/stats - Summary counts of sent, failed, pending

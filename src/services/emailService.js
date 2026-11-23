@@ -65,24 +65,82 @@ function isStudentSelectionComplete(studentId) {
 }
 
 /**
+ * Retrieves the active SMTP configuration from database or environment variables
+ */
+function getSmtpConfig() {
+  const getSetting = (key) => {
+    try {
+      const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key);
+      return row ? row.value : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const dbHost = getSetting('smtp_host');
+  const dbPort = getSetting('smtp_port');
+  const dbUser = getSetting('smtp_user');
+  const dbPass = getSetting('smtp_pass');
+  const dbSecure = getSetting('smtp_secure');
+  const dbFrom = getSetting('smtp_from');
+
+  const host = dbHost || process.env.SMTP_HOST || '';
+  const port = parseInt(dbPort || process.env.SMTP_PORT || '587', 10);
+  const user = dbUser || process.env.SMTP_USER || '';
+  const pass = dbPass || process.env.SMTP_PASS || '';
+  const secure = dbSecure ? dbSecure === 'true' : (process.env.SMTP_SECURE === 'true' || port === 465);
+  const from = dbFrom || process.env.SMTP_FROM || '"RGMCET Faculty Selection Portal" <no-reply@rgmcet.edu.in>';
+
+  const isConfigured = Boolean(host && user && pass);
+
+  return {
+    isConfigured,
+    host,
+    port,
+    user,
+    pass,
+    secure,
+    from,
+    hasPass: Boolean(pass)
+  };
+}
+
+/**
+ * Saves SMTP configuration to the database
+ */
+function saveSmtpConfig({ host, port, user, pass, secure, from }) {
+  const now = new Date().toISOString();
+  const upsert = db.prepare(`
+    INSERT INTO system_settings (key, value, updated_at) 
+    VALUES (?, ?, ?) 
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `);
+
+  if (host !== undefined) upsert.run('smtp_host', host.trim(), now);
+  if (port !== undefined) upsert.run('smtp_port', String(port).trim(), now);
+  if (user !== undefined) upsert.run('smtp_user', user.trim(), now);
+  if (pass !== undefined && pass !== '') upsert.run('smtp_pass', pass.trim(), now);
+  if (secure !== undefined) upsert.run('smtp_secure', String(secure), now);
+  if (from !== undefined) upsert.run('smtp_from', from.trim(), now);
+
+  return getSmtpConfig();
+}
+
+/**
  * Returns a configured Nodemailer transporter or a safe local simulation transporter
  * when SMTP environment credentials are not configured.
  */
 function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+  const config = getSmtpConfig();
 
-  if (host && (user || pass)) {
+  if (config.isConfigured) {
     return nodemailer.createTransport({
-      host,
-      port,
-      secure,
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
       auth: {
-        user,
-        pass
+        user: config.user,
+        pass: config.pass
       },
       tls: {
         rejectUnauthorized: false
@@ -92,14 +150,69 @@ function getTransporter() {
 
   // Graceful simulation fallback for local development or testing when SMTP is unset
   return {
+    isSimulated: true,
     sendMail: async (options) => {
-      console.log(`[EmailService:Simulated] Email sent to official college mail: ${options.to}`);
+      console.log(`[EmailService:Simulated] (SMTP is not configured in Admin Settings or .env). Email sent to official college mail: ${options.to}`);
       console.log(`[EmailService:Simulated] Subject: ${options.subject}`);
       return {
         messageId: `simulated-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        response: '250 Simulated confirmation email delivered to college inbox'
+        response: '250 Simulated confirmation email delivered to college inbox (Configure SMTP in Admin Portal to send real emails)'
       };
     }
+  };
+}
+
+/**
+ * Sends a real live test email to verify SMTP configuration
+ */
+async function sendTestEmail(targetEmail) {
+  const config = getSmtpConfig();
+  if (!config.isConfigured) {
+    throw new Error('SMTP is not configured yet! Please enter your SMTP Host, Username/Email, and App Password in the SMTP Settings dialog and click Save.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.user,
+      pass: config.pass
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+
+  const testSubject = 'RGMCET Faculty Selection Portal - Live SMTP Test';
+  const testHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+      <h2 style="color: #065f46; margin-top: 0;">✓ RGMCET SMTP Connected Successfully!</h2>
+      <p style="color: #334155; font-size: 14px; line-height: 1.6;">
+        This test confirms that your SMTP mail server (<strong>${config.host}</strong>) is authenticated and actively delivering emails.
+      </p>
+      <div style="background: #f8fafc; border-left: 4px solid #10b981; padding: 12px; margin: 16px 0; font-size: 13px; color: #475569;">
+        <strong>Sender:</strong> ${config.from}<br>
+        <strong>Recipient:</strong> ${targetEmail}<br>
+        <strong>Timestamp:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+      </div>
+      <p style="font-size: 12px; color: #64748b; margin-bottom: 0;">
+        Students will now receive their official faculty selection confirmation emails at their college email inboxes upon completing their selections.
+      </p>
+    </div>
+  `;
+
+  const info = await transporter.sendMail({
+    from: config.from,
+    to: targetEmail,
+    subject: testSubject,
+    html: testHtml
+  });
+
+  return {
+    success: true,
+    message: `Test email sent successfully to ${targetEmail}!`,
+    messageId: info.messageId
   };
 }
 
@@ -522,5 +635,8 @@ module.exports = {
   resendStudentEmail,
   generateConfirmationEmailHtml,
   isStudentSelectionComplete,
-  getStudentCollegeEmail
+  getStudentCollegeEmail,
+  getSmtpConfig,
+  saveSmtpConfig,
+  sendTestEmail
 };

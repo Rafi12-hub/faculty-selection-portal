@@ -191,6 +191,12 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_email_logs_student ON email_logs(student_id, status);
     CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status);
     CREATE INDEX IF NOT EXISTS idx_email_logs_created ON email_logs(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   // Migration: Add elective_group and parent_subject_id to subjects table
