@@ -126,14 +126,53 @@ function saveSmtpConfig({ host, port, user, pass, secure, from }) {
 }
 
 /**
- * Returns a configured Nodemailer transporter or a safe local simulation transporter
- * when SMTP environment credentials are not configured.
+ * Dispatches an email using either:
+ * 1. Resend HTTP REST API (over HTTPS Port 443 - works everywhere including Railway)
+ * 2. Webhook URL (e.g. Google Apps Script)
+ * 3. Standard SMTP via Nodemailer
  */
-function getTransporter() {
+async function sendRawEmail({ to, subject, html }) {
   const config = getSmtpConfig();
 
+  // 1. Webhook URL (e.g. Google Apps Script)
+  if (config.host && (config.host.startsWith('https://') || config.host.includes('script.google.com'))) {
+    const res = await fetch(config.host, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject, html, fromName: 'RGMCET Faculty Selection Portal' })
+    }).then(r => r.json());
+    if (res && res.success === false) throw new Error(res.error || 'Webhook delivery failed');
+    return { messageId: 'webhook-' + Date.now() };
+  }
+
+  // 2. Resend HTTP API (Port 443 HTTPS - completely unblocked on Railway!)
+  const resendKey = (config.pass && config.pass.startsWith('re_')) ? config.pass : (process.env.RESEND_API_KEY || (config.user && config.user.startsWith('re_') ? config.user : null));
+  if (resendKey || config.host === 'api.resend.com') {
+    const key = resendKey || config.pass;
+    const fromAddr = 'RGMCET Faculty Selection Portal <onboarding@resend.dev>';
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + key.trim(),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: fromAddr,
+        to: Array.isArray(to) ? to : [to],
+        subject: subject,
+        html: html
+      })
+    }).then(r => r.json());
+
+    if (res.name === 'validation_error' || res.statusCode >= 400 || res.error) {
+      throw new Error(res.message || res.error || 'Resend HTTP API error');
+    }
+    return { messageId: res.id || 'resend-' + Date.now() };
+  }
+
+  // 3. Standard SMTP Transporter (if configured)
   if (config.isConfigured) {
-    return nodemailer.createTransport({
+    const transporter = nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure,
@@ -148,19 +187,16 @@ function getTransporter() {
         rejectUnauthorized: false
       }
     });
+
+    return await transporter.sendMail({
+      from: config.from,
+      to,
+      subject,
+      html
+    });
   }
 
-  // Graceful simulation fallback for local development or testing when SMTP is unset
-  return {
-    isSimulated: true,
-    sendMail: async (options) => {
-      console.log(`[EmailService:Simulated] (SMTP is not configured in Admin Settings or .env). Email would be sent to: ${options.to}`);
-      return {
-        messageId: `simulated-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        response: 'Simulated mode: real SMTP credentials not configured'
-      };
-    }
-  };
+  throw new Error('Email service not configured. Please enter your credentials in Admin Settings.');
 }
 
 /**
@@ -168,35 +204,19 @@ function getTransporter() {
  */
 async function sendTestEmail(targetEmail) {
   const config = getSmtpConfig();
-  if (!config.isConfigured) {
-    throw new Error('SMTP is not configured yet! Please enter your SMTP Host, Username/Email, and App Password in the SMTP Settings dialog and click Save.');
+  const resendKey = (config.pass && config.pass.startsWith('re_')) ? config.pass : process.env.RESEND_API_KEY;
+  if (!config.isConfigured && !resendKey && !config.host.startsWith('https://')) {
+    throw new Error('Email service is not configured yet! Please enter your credentials or Resend API key in the SMTP Settings dialog and click Save.');
   }
 
-  const transporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: {
-      user: config.user,
-      pass: config.pass
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    tls: {
-      rejectUnauthorized: false
-    }
-  });
-
-  const testSubject = 'RGMCET Faculty Selection Portal - Live SMTP Test';
+  const testSubject = 'RGMCET Faculty Selection Portal - Live Test Email';
   const testHtml = `
     <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
-      <h2 style="color: #065f46; margin-top: 0;">✓ RGMCET SMTP Connected Successfully!</h2>
+      <h2 style="color: #065f46; margin-top: 0;">✓ RGMCET Email Service Connected Successfully!</h2>
       <p style="color: #334155; font-size: 14px; line-height: 1.6;">
-        This test confirms that your SMTP mail server (<strong>${config.host}</strong>) is authenticated and actively delivering emails.
+        This test confirms that your email delivery service is authenticated and actively delivering emails.
       </p>
       <div style="background: #f8fafc; border-left: 4px solid #10b981; padding: 12px; margin: 16px 0; font-size: 13px; color: #475569;">
-        <strong>Sender:</strong> ${config.from}<br>
         <strong>Recipient:</strong> ${targetEmail}<br>
         <strong>Timestamp:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
       </div>
@@ -206,8 +226,7 @@ async function sendTestEmail(targetEmail) {
     </div>
   `;
 
-  const info = await transporter.sendMail({
-    from: config.from,
+  const info = await sendRawEmail({
     to: targetEmail,
     subject: testSubject,
     html: testHtml
@@ -510,22 +529,9 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
 
     // 6. Generate HTML Content with confirmed faculty table
     const htmlContent = generateConfirmationEmailHtml(student, selections, collegeEmail);
-    const transporter = getTransporter();
-
-    if (transporter.isSimulated) {
-      const failIso = new Date().toISOString();
-      db.prepare(`
-        UPDATE email_logs 
-        SET status = 'FAILED', error_message = 'Real SMTP credentials not configured. Please configure Gmail/Google Workspace in Admin SMTP Settings.', updated_at = ? 
-        WHERE id = ?
-      `).run(failIso, logId);
-      console.warn(`[EmailService] Cannot deliver to ${collegeEmail}: SMTP not configured with real mail credentials.`);
-      return { success: false, logId, status: 'FAILED', error: 'Real SMTP credentials not configured in Admin Settings.', recipient: collegeEmail };
-    }
 
     try {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM || '"RGMCET Faculty Selection Portal" <no-reply@rgmcet.edu.in>',
+      const info = await sendRawEmail({
         to: collegeEmail,
         subject: emailSubject,
         html: htmlContent
@@ -539,7 +545,7 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
       `).run(sentIso, sentIso, logId);
 
       console.log(`[EmailService] Confirmation email successfully sent to college email ${collegeEmail} (${student.reg_no}) with ${selections.length} confirmed courses.`);
-      return { success: true, logId, status: 'SENT', recipient: collegeEmail, completedCourses: selections.length };
+      return { success: true, logId, status: 'SENT', recipient: collegeEmail, completedCourses: selections.length, messageId: info.messageId };
     } catch (sendErr) {
       const failIso = new Date().toISOString();
       db.prepare(`
@@ -606,11 +612,9 @@ async function retryFailedEmail(logId) {
   }
 
   const htmlContent = generateConfirmationEmailHtml(student, selections, collegeEmail);
-  const transporter = getTransporter();
 
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || '"RGMCET Faculty Selection Portal" <no-reply@rgmcet.edu.in>',
+    const info = await sendRawEmail({
       to: collegeEmail,
       subject: log.subject,
       html: htmlContent
