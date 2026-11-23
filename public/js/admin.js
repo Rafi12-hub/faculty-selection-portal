@@ -4895,7 +4895,7 @@ function openSendTestEmailModal() {
 
         <div>
           <label class="block font-bold text-slate-700 mb-1">Target Test Recipient Email *</label>
-          <input type="email" id="test-email-target" required placeholder="e.g. yourname@gmail.com" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+          <input type="email" id="test-email-target" required value="24091a05c6@rgmcet.edu.in" placeholder="24091a05c6@rgmcet.edu.in" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
           <p class="text-[10px] text-slate-400 mt-1">Check your inbox or spam folder right after clicking Send.</p>
         </div>
 

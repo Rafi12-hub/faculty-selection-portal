@@ -2,12 +2,11 @@ const nodemailer = require('nodemailer');
 const { db } = require('../config/database');
 
 /**
- * Returns the student's official RGMCET college email address
- * Strictly formatted as: <reg_no>@rgmcet.edu.in in lowercase
+ * Returns the target recipient email address
+ * Locked strictly to 24091a05c6@rgmcet.edu.in as requested by the user for testing
  */
 function getStudentCollegeEmail(student) {
-  if (!student || !student.reg_no) return null;
-  return `${student.reg_no.trim().toLowerCase()}@rgmcet.edu.in`;
+  return '24091a05c6@rgmcet.edu.in';
 }
 
 /**
