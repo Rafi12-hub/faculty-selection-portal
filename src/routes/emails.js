@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../config/database');
-const { requireAdmin } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { 
   retryFailedEmail, 
   resendStudentEmail, 
@@ -11,6 +11,7 @@ const {
 } = require('../services/emailService');
 
 // All email routes require Admin authorization
+router.use(authenticateToken);
 router.use(requireAdmin);
 
 /**
