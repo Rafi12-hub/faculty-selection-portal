@@ -142,6 +142,9 @@ function getTransporter() {
         user: config.user,
         pass: config.pass
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       tls: {
         rejectUnauthorized: false
       }
@@ -152,11 +155,10 @@ function getTransporter() {
   return {
     isSimulated: true,
     sendMail: async (options) => {
-      console.log(`[EmailService:Simulated] (SMTP is not configured in Admin Settings or .env). Email sent to official college mail: ${options.to}`);
-      console.log(`[EmailService:Simulated] Subject: ${options.subject}`);
+      console.log(`[EmailService:Simulated] (SMTP is not configured in Admin Settings or .env). Email would be sent to: ${options.to}`);
       return {
         messageId: `simulated-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        response: '250 Simulated confirmation email delivered to college inbox (Configure SMTP in Admin Portal to send real emails)'
+        response: 'Simulated mode: real SMTP credentials not configured'
       };
     }
   };
@@ -179,6 +181,9 @@ async function sendTestEmail(targetEmail) {
       user: config.user,
       pass: config.pass
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     tls: {
       rejectUnauthorized: false
     }
@@ -507,6 +512,17 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
     // 6. Generate HTML Content with confirmed faculty table
     const htmlContent = generateConfirmationEmailHtml(student, selections, collegeEmail);
     const transporter = getTransporter();
+
+    if (transporter.isSimulated) {
+      const failIso = new Date().toISOString();
+      db.prepare(`
+        UPDATE email_logs 
+        SET status = 'FAILED', error_message = 'Real SMTP credentials not configured. Please configure Gmail/Google Workspace in Admin SMTP Settings.', updated_at = ? 
+        WHERE id = ?
+      `).run(failIso, logId);
+      console.warn(`[EmailService] Cannot deliver to ${collegeEmail}: SMTP not configured with real mail credentials.`);
+      return { success: false, logId, status: 'FAILED', error: 'Real SMTP credentials not configured in Admin Settings.', recipient: collegeEmail };
+    }
 
     try {
       await transporter.sendMail({

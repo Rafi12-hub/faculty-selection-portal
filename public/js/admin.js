@@ -4763,11 +4763,8 @@ function openSmtpSettingsModal() {
         <!-- Quick Presets -->
         <div class="flex items-center gap-2">
           <span class="text-slate-500 font-semibold text-[11px]">Quick Presets:</span>
-          <button type="button" onclick="applySmtpPreset('gmail')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition cursor-pointer">
-            Gmail
-          </button>
-          <button type="button" onclick="applySmtpPreset('rgmcet')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition cursor-pointer">
-            RGMCET Mail Server
+          <button type="button" onclick="applySmtpPreset('gmail')" class="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-[10px] transition cursor-pointer">
+            Gmail / Google Workspace (RGMCET)
           </button>
           <button type="button" onclick="applySmtpPreset('outlook')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition cursor-pointer">
             Outlook / Office 365
@@ -4836,14 +4833,10 @@ function applySmtpPreset(type) {
   const portEl = document.getElementById('smtp-port');
   const secureEl = document.getElementById('smtp-secure');
 
-  if (type === 'gmail') {
+  if (type === 'gmail' || type === 'rgmcet') {
     if (hostEl) hostEl.value = 'smtp.gmail.com';
     if (portEl) portEl.value = '587';
     if (secureEl) secureEl.checked = false;
-  } else if (type === 'rgmcet') {
-    if (hostEl) hostEl.value = 'mail.rgmcet.edu.in';
-    if (portEl) portEl.value = '465';
-    if (secureEl) secureEl.checked = true;
   } else if (type === 'outlook') {
     if (hostEl) hostEl.value = 'smtp.office365.com';
     if (portEl) portEl.value = '587';
