@@ -46,6 +46,7 @@ app.use('/api/selections', require('./routes/selections'));
 app.use('/api/open-electives', require('./routes/openElectives'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/audit', require('./routes/audit'));
+app.use('/api/emails', require('./routes/emails'));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

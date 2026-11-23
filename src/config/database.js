@@ -172,6 +172,25 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_oe_reg_student ON open_elective_registrations(student_id, elective_id, status);
     CREATE INDEX IF NOT EXISTS idx_oe_subjects_elective ON open_elective_subjects(elective_id, is_active);
     CREATE INDEX IF NOT EXISTS idx_oe_faculty_subject ON open_elective_faculty_assignments(subject_id, is_active);
+
+    -- Automatic Email Notifications & Audit Trail
+    CREATE TABLE IF NOT EXISTS email_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+      recipient_email TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      email_type TEXT NOT NULL DEFAULT 'SELECTION_CONFIRMATION',
+      status TEXT NOT NULL CHECK(status IN ('SENT', 'FAILED', 'PENDING')),
+      attempt_count INTEGER NOT NULL DEFAULT 1,
+      error_message TEXT,
+      sent_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_email_logs_student ON email_logs(student_id, status);
+    CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status);
+    CREATE INDEX IF NOT EXISTS idx_email_logs_created ON email_logs(created_at DESC);
   `);
 
   // Migration: Add elective_group and parent_subject_id to subjects table

@@ -13,10 +13,14 @@ let ADMIN_DATA = {
   selections: [],
   auditLogs: [],
   openElectives: null,
-  oeReports: null
+  oeReports: null,
+  emailLogs: [],
+  emailStats: null,
+  emailFilter: 'ALL',
+  emailSearch: ''
 };
 
-// Switch between Admin Tabs (including Open Electives Management)
+// Switch between Admin Tabs (including Open Electives & Email Notifications)
 function switchAdminTab(tabName) {
   STATE.activeAdminTab = tabName;
 
@@ -51,6 +55,7 @@ function switchAdminTab(tabName) {
     case 'live': loadAdminLiveSelections(); break;
     case 'reports': loadAdminReports(); break;
     case 'audit': loadAdminAudit(); break;
+    case 'emails': loadAdminEmails(); break;
   }
 }
 window.switchAdminTab = switchAdminTab;
@@ -4330,3 +4335,366 @@ window.filterOEReports = filterOEReports;
 window.exportOEReportsToCSV = exportOEReportsToCSV;
 window.filterOEIncomplete = filterOEIncomplete;
 window.exportOEIncompleteToCSV = exportOEIncompleteToCSV;
+
+// =========================================================================
+// 11. AUTOMATIC EMAIL NOTIFICATIONS & DELIVERY MANAGEMENT
+// =========================================================================
+async function loadAdminEmails(filter = null) {
+  if (filter) ADMIN_DATA.emailFilter = filter;
+  const container = document.getElementById('admin-tab-content');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="py-20 text-center">
+      <div class="w-12 h-12 rounded-full border-4 border-blue-600 border-t-transparent animate-spin mx-auto mb-3"></div>
+      <p class="text-xs font-semibold text-slate-500">Loading Confirmation Email Logs & Delivery Status...</p>
+    </div>
+  `;
+
+  try {
+    const curFilter = ADMIN_DATA.emailFilter || 'ALL';
+    const curSearch = ADMIN_DATA.emailSearch || '';
+    const res = await api.get(`/api/emails/logs?status=${curFilter}&search=${encodeURIComponent(curSearch)}`);
+
+    if (!res || !res.success) throw new Error('Could not fetch email delivery records.');
+
+    ADMIN_DATA.emailLogs = res.logs || [];
+    ADMIN_DATA.emailStats = res.stats || { total: 0, sent: 0, failed: 0, pending: 0 };
+    renderAdminEmailsList();
+  } catch (err) {
+    container.innerHTML = `
+      <div class="p-8 bg-rose-50 border border-rose-200 rounded-2xl text-center text-rose-800 space-y-3">
+        <i class="fa-solid fa-triangle-exclamation text-3xl text-rose-500"></i>
+        <h4 class="font-bold text-sm">Failed to Load Email Delivery Records</h4>
+        <p class="text-xs text-rose-600 max-w-md mx-auto">${err.message}</p>
+        <button onclick="loadAdminEmails()" class="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition">
+          Retry Loading
+        </button>
+      </div>
+    `;
+  }
+}
+
+function renderAdminEmailsList() {
+  const container = document.getElementById('admin-tab-content');
+  if (!container) return;
+
+  const logs = ADMIN_DATA.emailLogs || [];
+  const stats = ADMIN_DATA.emailStats || { total: 0, sent: 0, failed: 0, pending: 0 };
+  const filter = ADMIN_DATA.emailFilter || 'ALL';
+  const searchTerm = ADMIN_DATA.emailSearch || '';
+
+  const html = `
+    <div class="space-y-6">
+      <!-- Section Header -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-blue-600"></span>
+            <h3 class="text-lg font-bold text-slate-900">Faculty Selection Confirmation Emails</h3>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">
+            Real-time audit trail and delivery tracking for automatic confirmation emails sent to students upon finalizing course and faculty choices.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          ${stats.failed > 0 ? `
+            <button onclick="retryAllFailedEmails()" id="btn-retry-all-emails" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition">
+              <i class="fa-solid fa-rotate-right"></i>
+              <span>Retry All Failed (${stats.failed})</span>
+            </button>
+          ` : ''}
+          <button onclick="loadAdminEmails()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-2 transition">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4 Stat Summary Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Triggered</span>
+            <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-envelope"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-black text-slate-900 mt-2">${stats.total}</div>
+          <div class="text-[11px] text-slate-400 mt-1">Automated student notifications</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm bg-gradient-to-br from-white to-emerald-50/30">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Delivered / Sent</span>
+            <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-circle-check"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-black text-emerald-700 mt-2">${stats.sent}</div>
+          <div class="text-[11px] text-emerald-600 mt-1">Confirmed student inboxes</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl border ${stats.failed > 0 ? 'border-rose-300 ring-2 ring-rose-400/20' : 'border-slate-200'} shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-rose-700 uppercase tracking-wider">Failed Deliveries</span>
+            <div class="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-black text-rose-700 mt-2">${stats.failed}</div>
+          <div class="text-[11px] text-rose-500 mt-1">Requires retry or verification</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-amber-700 uppercase tracking-wider">Pending Delivery</span>
+            <div class="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-sm font-bold">
+              <i class="fa-solid fa-clock"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-black text-amber-700 mt-2">${stats.pending}</div>
+          <div class="text-[11px] text-amber-600 mt-1">In dispatch queue</div>
+        </div>
+      </div>
+
+      <!-- Controls & Filter Strip -->
+      <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <!-- Status Filter Tabs -->
+        <div class="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto">
+          <button onclick="loadAdminEmails('ALL')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'ALL' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+            All (${stats.total})
+          </button>
+          <button onclick="loadAdminEmails('SENT')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'SENT' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+            Sent (${stats.sent})
+          </button>
+          <button onclick="loadAdminEmails('FAILED')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'FAILED' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+            Failed (${stats.failed})
+          </button>
+          <button onclick="loadAdminEmails('PENDING')" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'PENDING' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
+            Pending (${stats.pending})
+          </button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="relative w-full md:w-80">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input 
+            type="text" 
+            id="input-email-search" 
+            placeholder="Search student, roll no, or email..." 
+            value="${escapeQuote(searchTerm)}"
+            oninput="handleEmailSearchInput(event)"
+            class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all">
+        </div>
+      </div>
+
+      <!-- Email Logs Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+              <tr>
+                <th class="py-3.5 px-6">Student Information</th>
+                <th class="py-3.5 px-6">Recipient Email</th>
+                <th class="py-3.5 px-6">Notification Type</th>
+                <th class="py-3.5 px-6 text-center">Status</th>
+                <th class="py-3.5 px-6">Dispatch Timestamp</th>
+                <th class="py-3.5 px-6 text-center">Attempts</th>
+                <th class="py-3.5 px-6 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${logs.length === 0 ? `
+                <tr>
+                  <td colspan="7" class="py-12 text-center text-slate-400">
+                    <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-xl mb-2">
+                      <i class="fa-solid fa-inbox"></i>
+                    </div>
+                    <div class="font-bold text-slate-700 text-sm">No email notification records found</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Confirmation emails are logged automatically when students confirm their faculty choices.</div>
+                  </td>
+                </tr>
+              ` : logs.map(l => {
+                const isSent = l.status === 'SENT';
+                const isFailed = l.status === 'FAILED';
+                const isPending = l.status === 'PENDING';
+
+                return `
+                  <tr class="hover:bg-slate-50/80 transition-colors">
+                    <td class="py-3.5 px-6">
+                      <div class="font-bold text-slate-900">${l.student_name}</div>
+                      <div class="flex items-center gap-1.5 mt-0.5">
+                        <span class="mono-font text-[11px] font-semibold text-blue-600">${l.student_reg_no}</span>
+                        <span class="text-slate-300">&bull;</span>
+                        <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">Year ${l.student_academic_year}</span>
+                      </div>
+                    </td>
+
+                    <td class="py-3.5 px-6">
+                      <div class="font-semibold text-slate-800">${l.recipient_email}</div>
+                      <div class="text-[10px] text-slate-400">Institutional Mail</div>
+                    </td>
+
+                    <td class="py-3.5 px-6">
+                      <div class="font-bold text-slate-700 text-xs">Faculty Selection Confirmation</div>
+                      <div class="text-[10px] text-slate-400 truncate max-w-xs">${l.subject}</div>
+                    </td>
+
+                    <td class="py-3.5 px-6 text-center">
+                      ${isSent ? `
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                          <span>SENT</span>
+                        </span>
+                      ` : (isFailed ? `
+                        <button onclick="viewEmailError('${escapeQuote(l.error_message || 'SMTP connection failed')}', '${escapeQuote(l.student_name)}', '${escapeQuote(l.recipient_email)}')" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 hover:bg-rose-200 transition cursor-pointer" title="Click to view failure reason">
+                          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                          <span>FAILED</span>
+                          <i class="fa-solid fa-circle-info text-[10px] ml-0.5"></i>
+                        </button>
+                      ` : `
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                          <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                          <span>PENDING</span>
+                        </span>
+                      `)}
+                    </td>
+
+                    <td class="py-3.5 px-6">
+                      <div class="text-xs text-slate-700 font-medium">
+                        ${l.sent_at ? new Date(l.sent_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : new Date(l.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                      <div class="text-[10px] text-slate-400">
+                        ${l.sent_at ? new Date(l.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </td>
+
+                    <td class="py-3.5 px-6 text-center">
+                      <span class="inline-block px-2 py-0.5 rounded-md font-bold text-[11px] ${l.attempt_count > 1 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}">
+                        ${l.attempt_count}
+                      </span>
+                    </td>
+
+                    <td class="py-3.5 px-6 text-right">
+                      <button 
+                        id="btn-resend-${l.id}" 
+                        onclick="resendEmailLog(${l.id})" 
+                        class="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ml-auto border border-indigo-200 cursor-pointer shadow-sm">
+                        <i class="fa-solid fa-paper-plane text-[10px]"></i>
+                        <span>Resend Email</span>
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+let emailSearchTimeout = null;
+function handleEmailSearchInput(e) {
+  ADMIN_DATA.emailSearch = e.target.value;
+  clearTimeout(emailSearchTimeout);
+  emailSearchTimeout = setTimeout(() => {
+    loadAdminEmails();
+  }, 350);
+}
+
+async function resendEmailLog(logId) {
+  const btn = document.getElementById(`btn-resend-${logId}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-[10px]"></i> <span>Sending...</span>`;
+  }
+
+  try {
+    const res = await api.post(`/api/emails/resend/${logId}`);
+    showToast(res.message || 'Confirmation email resent successfully!', 'success');
+    await loadAdminEmails();
+  } catch (err) {
+    showToast(err.message || 'Failed to resend confirmation email.', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-paper-plane text-[10px]"></i> <span>Resend Email</span>`;
+    }
+  }
+}
+
+async function resendStudentConfirmationEmail(studentId) {
+  try {
+    const res = await api.post(`/api/emails/send-student/${studentId}`);
+    showToast(res.message || 'Confirmation email dispatched to student!', 'success');
+    if (STATE.activeAdminTab === 'emails') {
+      await loadAdminEmails();
+    }
+  } catch (err) {
+    showToast(err.message || 'Failed to dispatch confirmation email.', 'error');
+  }
+}
+
+async function retryAllFailedEmails() {
+  const btn = document.getElementById('btn-retry-all-emails');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Retrying All...</span>`;
+  }
+
+  try {
+    const res = await api.post('/api/emails/retry-all-failed');
+    showToast(res.message || 'Retry batch processed successfully!', 'success');
+    await loadAdminEmails();
+  } catch (err) {
+    showToast(err.message || 'Failed to retry emails.', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-rotate-right"></i> <span>Retry All Failed</span>`;
+    }
+  }
+}
+
+function viewEmailError(errMsg, studentName, email) {
+  openModal({
+    title: 'Email Delivery Failure Details',
+    maxWidth: 'max-w-md',
+    body: `
+      <div class="space-y-4 py-2 text-xs">
+        <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
+          <div class="font-bold text-rose-900 flex items-center gap-2">
+            <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
+            <span>Delivery Error Log</span>
+          </div>
+          <div class="text-rose-700 font-mono text-[11px] break-words bg-white p-3 rounded-lg border border-rose-200">
+            ${escapeQuote(errMsg)}
+          </div>
+        </div>
+
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
+          <div><strong>Candidate:</strong> ${studentName}</div>
+          <div><strong>Recipient Email:</strong> ${email}</div>
+          <div><strong>Recommendation:</strong> Verify that SMTP server credentials in environment settings are valid and that the recipient mailbox exists.</div>
+        </div>
+      </div>
+    `,
+    footer: `
+      <button onclick="closeModal()" class="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-xl text-xs transition">
+        Close
+      </button>
+    `
+  });
+}
+
+// Global window exposure
+window.loadAdminEmails = loadAdminEmails;
+window.renderAdminEmailsList = renderAdminEmailsList;
+window.handleEmailSearchInput = handleEmailSearchInput;
+window.resendEmailLog = resendEmailLog;
+window.resendStudentConfirmationEmail = resendStudentConfirmationEmail;
+window.retryAllFailedEmails = retryAllFailedEmails;
+window.viewEmailError = viewEmailError;

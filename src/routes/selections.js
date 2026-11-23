@@ -3,6 +3,7 @@ const router = express.Router();
 const { db, withTransaction } = require('../config/database');
 const { authenticateToken, requireAdmin, requireStudent } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
+const { sendSelectionConfirmationEmail } = require('../services/emailService');
 
 router.use(authenticateToken);
 
@@ -206,6 +207,11 @@ router.post('/reserve', requireStudent, (req, res) => {
       req.ip
     );
 
+    // Trigger automatic confirmation email after selection is committed
+    sendSelectionConfirmationEmail(student.id).catch(err => {
+      console.error('[EmailService] Background confirmation email dispatch error:', err.message);
+    });
+
     res.status(201).json({
       success: true,
       message: `Seat confirmed successfully for ${reservationResult.facultyName} (${reservationResult.subjectCode})!`,
@@ -358,6 +364,11 @@ router.post('/reserve-batch', requireStudent, (req, res) => {
       `Student ${student.name} (${student.reg_no}) confirmed ${batchResults.length} faculty selections in one submission.`,
       req.ip
     );
+
+    // Trigger automatic confirmation email after all batch selections are committed
+    sendSelectionConfirmationEmail(student.id).catch(err => {
+      console.error('[EmailService] Background confirmation email dispatch error:', err.message);
+    });
 
     res.status(201).json({
       success: true,

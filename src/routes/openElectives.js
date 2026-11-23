@@ -4,6 +4,7 @@ const { db, withTransaction } = require('../config/database');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
 const { getFacultyAvailability } = require('../utils/facultyAvailability');
+const { sendSelectionConfirmationEmail } = require('../services/emailService');
 
 router.use(authenticateToken);
 
@@ -464,6 +465,11 @@ router.post('/reserve-batch', (req, res) => {
     });
 
     logAudit(req.user.id, 'OE_BATCH_RESERVED', 'open_elective_registrations', null, `Student ${student.reg_no} confirmed ${results.length} open electives`, req.ip);
+
+    // Trigger automatic confirmation email after open elective selections
+    sendSelectionConfirmationEmail(student.id).catch(err => {
+      console.error('[EmailService] Background confirmation email dispatch error:', err.message);
+    });
 
     res.status(201).json({
       success: true,
