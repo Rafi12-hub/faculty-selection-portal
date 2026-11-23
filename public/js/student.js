@@ -490,15 +490,9 @@ function renderStudentSubjects() {
           ` : `
             <div class="text-xs ${PENDING_SELECTIONS[subject.id] ? 'text-indigo-700 font-bold' : 'text-slate-500'} flex items-center gap-1.5">
               ${PENDING_SELECTIONS[subject.id]
-                ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Faculty choice marked. Click OK to confirm or submit all below.</span>'
+                ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Faculty choice marked.</span>'
                 : '<i class="fa-regular fa-circle text-slate-400 mr-1"></i><span>Click an oval above to mark your preferred faculty.</span>'}
             </div>
-            ${PENDING_SELECTIONS[subject.id] ? `
-              <button onclick="submitSubjectSelection(${subject.id})" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer">
-                <i class="fa-solid fa-check"></i>
-                <span>OK - Confirm Faculty</span>
-              </button>
-            ` : ''}
           `)}
         </div>
       </div>
@@ -651,15 +645,9 @@ function renderStudentSubjects() {
             ` : `
               <div class="text-xs ${pending.mappingId ? 'text-indigo-700 font-bold' : 'text-slate-500'} flex items-center gap-1.5">
                 ${pending.mappingId 
-                  ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Elective marked. Click OK to confirm or submit all below.</span>'
+                  ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Elective choice marked.</span>'
                   : '<i class="fa-regular fa-circle text-slate-400 mr-1"></i><span>Choose a subject and an available faculty above.</span>'}
               </div>
-              ${pending.mappingId ? `
-                <button onclick="confirmInternalOESelection('${oeKey}')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer">
-                  <i class="fa-solid fa-check"></i>
-                  <span>OK - Confirm Faculty</span>
-                </button>
-              ` : ''}
             `}
           </div>
         `}
