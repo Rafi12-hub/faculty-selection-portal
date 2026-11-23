@@ -2,6 +2,69 @@ const nodemailer = require('nodemailer');
 const { db } = require('../config/database');
 
 /**
+ * Returns the student's official RGMCET college email address
+ * Strictly formatted as: <reg_no>@rgmcet.edu.in in lowercase
+ */
+function getStudentCollegeEmail(student) {
+  if (!student || !student.reg_no) return null;
+  return `${student.reg_no.trim().toLowerCase()}@rgmcet.edu.in`;
+}
+
+/**
+ * Checks whether the student has completed all required course selections
+ * (All active core subjects + 1 Professional Elective - I + 1 Professional Elective - II where applicable)
+ */
+function isStudentSelectionComplete(studentId) {
+  const student = db.prepare('SELECT id, academic_year, semester, section FROM students WHERE id = ?').get(studentId);
+  if (!student) return false;
+
+  // 1. Active Core Subjects for student's year and semester
+  const coreSubjects = db.prepare(`
+    SELECT id FROM subjects 
+    WHERE academic_year = ? AND semester = ? AND (elective_group IS NULL OR elective_group = 'NONE') AND status = 'ACTIVE'
+  `).all(student.academic_year, student.semester);
+
+  // 2. Active Professional Electives
+  const oe1Subjects = db.prepare(`
+    SELECT id FROM subjects 
+    WHERE academic_year = ? AND semester = ? AND elective_group = 'OE1' AND status = 'ACTIVE'
+  `).all(student.academic_year, student.semester);
+
+  const oe2Subjects = db.prepare(`
+    SELECT id FROM subjects 
+    WHERE academic_year = ? AND semester = ? AND elective_group = 'OE2' AND status = 'ACTIVE'
+  `).all(student.academic_year, student.semester);
+
+  // 3. Current confirmed selections for student
+  const confirmed = db.prepare(`
+    SELECT s.id, sub.id as subject_id, sub.elective_group 
+    FROM selections s
+    JOIN subjects sub ON s.subject_id = sub.id
+    WHERE s.student_id = ? AND s.status = 'CONFIRMED'
+  `).all(studentId);
+
+  // Check Core completion: every core course must have a confirmed selection
+  const confirmedCoreCount = coreSubjects.filter(cs => confirmed.some(c => c.subject_id === cs.id)).length;
+  if (confirmedCoreCount < coreSubjects.length) {
+    return false;
+  }
+
+  // Check OE1 completion if OE1 courses are offered
+  if (oe1Subjects.length > 0) {
+    const hasOE1 = confirmed.some(c => c.elective_group === 'OE1');
+    if (!hasOE1) return false;
+  }
+
+  // Check OE2 completion if OE2 courses are offered
+  if (oe2Subjects.length > 0) {
+    const hasOE2 = confirmed.some(c => c.elective_group === 'OE2');
+    if (!hasOE2) return false;
+  }
+
+  return true;
+}
+
+/**
  * Returns a configured Nodemailer transporter or a safe local simulation transporter
  * when SMTP environment credentials are not configured.
  */
@@ -30,11 +93,11 @@ function getTransporter() {
   // Graceful simulation fallback for local development or testing when SMTP is unset
   return {
     sendMail: async (options) => {
-      console.log(`[EmailService:Simulated] Email sent to: ${options.to}`);
+      console.log(`[EmailService:Simulated] Email sent to official college mail: ${options.to}`);
       console.log(`[EmailService:Simulated] Subject: ${options.subject}`);
       return {
         messageId: `simulated-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        response: '250 Simulated confirmation email delivered successfully'
+        response: '250 Simulated confirmation email delivered to college inbox'
       };
     }
   };
@@ -43,7 +106,7 @@ function getTransporter() {
 /**
  * Generates a clean, professional, responsive college-themed HTML email template
  */
-function generateConfirmationEmailHtml(student, selections) {
+function generateConfirmationEmailHtml(student, selections, collegeEmail) {
   const formattedDate = new Date().toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata',
     dateStyle: 'full',
@@ -136,7 +199,7 @@ function generateConfirmationEmailHtml(student, selections) {
                 Faculty Selection Successfully Confirmed
               </h1>
               <p style="margin: 6px 0 0 0; font-size: 13px; color: #047857; font-weight: 500;">
-                Your course faculty preferences have been officially locked and seat capacity reserved under First-Come, First-Served (FCFS) rules.
+                All required course and faculty choices have been completed, officially locked, and allocated under First-Come, First-Served (FCFS) rules.
               </p>
             </td>
           </tr>
@@ -158,8 +221,8 @@ function generateConfirmationEmailHtml(student, selections) {
                     <td style="padding: 5px 0; font-weight: bold; font-family: monospace; color: #2563eb; font-size: 14px;">${student.reg_no}</td>
                   </tr>
                   <tr>
-                    <td style="padding: 5px 0; color: #64748b;">Registered Email:</td>
-                    <td style="padding: 5px 0; color: #0f172a;">${student.email}</td>
+                    <td style="padding: 5px 0; color: #64748b;">Official College Email:</td>
+                    <td style="padding: 5px 0; font-weight: bold; font-family: monospace; color: #047857;">${collegeEmail}</td>
                   </tr>
                   <tr>
                     <td style="padding: 5px 0; color: #64748b;">Academic Cohort:</td>
@@ -171,6 +234,10 @@ function generateConfirmationEmailHtml(student, selections) {
                     <td style="padding: 5px 0; color: #64748b;">Confirmation Time:</td>
                     <td style="padding: 5px 0; font-weight: 600; color: #047857;">${formattedDate}</td>
                   </tr>
+                  <tr>
+                    <td style="padding: 5px 0; color: #64748b;">Registration Status:</td>
+                    <td style="padding: 5px 0; font-weight: 800; color: #059669;">REGISTRATION COMPLETED (100%)</td>
+                  </tr>
                 </table>
               </div>
             </td>
@@ -181,7 +248,7 @@ function generateConfirmationEmailHtml(student, selections) {
             <td style="padding: 0 24px 20px 24px;">
               <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                 <span>Confirmed Subjects &amp; Allocated Faculty</span>
-                <span style="font-size: 12px; font-weight: 600; color: #2563eb;">${selections.length} Courses Selected</span>
+                <span style="font-size: 12px; font-weight: 600; color: #2563eb;">${selections.length} Courses Completed</span>
               </div>
 
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse: collapse; width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; overflow: hidden;">
@@ -223,7 +290,7 @@ function generateConfirmationEmailHtml(student, selections) {
               </div>
               <div>Nandyal - 518501, Kurnool Dist., Andhra Pradesh, India</div>
               <div style="margin-top: 8px; color: #94a3b8; font-size: 10px;">
-                This is an automated system confirmation from the RGMCET Faculty-Student Selection Portal (FSSP). Please do not reply directly to this email.
+                This is an automated system confirmation sent exclusively to your official RGMCET student email address. Please do not reply directly to this email.
               </div>
             </td>
           </tr>
@@ -238,24 +305,39 @@ function generateConfirmationEmailHtml(student, selections) {
 }
 
 /**
- * Sends or logs the faculty selection confirmation email for a given student
+ * Sends or logs the faculty selection confirmation email for a given student.
+ * Condition: Only sent when the student has completed their selection (or when an admin explicitly resends).
+ * Address: Sent exclusively to the student's official college email address (<reg_no>@rgmcet.edu.in).
  * @param {number} studentId
- * @param {boolean} isResend - When true, bypasses duplicate check for explicit admin resend
+ * @param {boolean} isResend - When true, bypasses duplicate check and completion check for explicit admin resend
  */
 async function sendSelectionConfirmationEmail(studentId, isResend = false) {
   try {
     const student = db.prepare('SELECT * FROM students WHERE id = ?').get(studentId);
     if (!student) {
-      console.warn(`[EmailService] Student ${studentId} not found.`);
+      console.warn(`[EmailService] Student ID ${studentId} not found.`);
       return { success: false, message: 'Student record not found.' };
     }
 
-    if (!student.email) {
-      console.warn(`[EmailService] Student ${student.reg_no} has no registered email address.`);
-      return { success: false, message: 'Student has no registered email address.' };
+    // 1. Strictly enforce official college email: <reg_no>@rgmcet.edu.in
+    const collegeEmail = getStudentCollegeEmail(student);
+    if (!collegeEmail) {
+      console.warn(`[EmailService] Student ${student.id} has no valid registration number for college email.`);
+      return { success: false, message: 'Student has no valid registration number.' };
     }
 
-    // 1. Fetch all confirmed selections for this student
+    // 2. Completion Check: Send confirmation ONLY when the student has completed his selection
+    const isComplete = isStudentSelectionComplete(student.id);
+    if (!isResend && !isComplete) {
+      console.log(`[EmailService] Student ${student.reg_no} has not completed all course selections yet. Deferring confirmation email until complete.`);
+      return { 
+        success: false, 
+        message: 'Selection not yet completed. Confirmation email will be automatically dispatched once all required courses and electives are confirmed.',
+        pendingCompletion: true 
+      };
+    }
+
+    // 3. Fetch all confirmed selections with allocated faculties for this student
     const selections = db.prepare(`
       SELECT 
         s.id as selection_id,
@@ -277,10 +359,10 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
     `).all(student.id);
 
     if (selections.length === 0) {
-      return { success: false, message: 'No confirmed selections found to email.' };
+      return { success: false, message: 'No confirmed faculty selections found to email.' };
     }
 
-    // 2. Duplicate Prevention: Check if email was already sent for this student recently
+    // 4. Duplicate Prevention: Check if email was already sent for this complete selection
     if (!isResend) {
       const recentSent = db.prepare(`
         SELECT id, sent_at FROM email_logs 
@@ -291,10 +373,9 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
       if (recentSent && recentSent.sent_at) {
         const latestSelTime = new Date(selections[selections.length - 1].reserved_at).getTime();
         const sentTime = new Date(recentSent.sent_at).getTime();
-        // If an email was already successfully sent at or after the latest selection, prevent duplicate!
         if (sentTime >= latestSelTime - 5000) {
-          console.log(`[EmailService] Duplicate confirmation email skipped for student ${student.reg_no}.`);
-          return { success: true, message: 'Duplicate confirmation email prevented; already sent.', logId: recentSent.id, skipped: true };
+          console.log(`[EmailService] Duplicate confirmation email skipped for student ${student.reg_no} (already sent).`);
+          return { success: true, message: 'Duplicate confirmation email prevented; already sent to college email.', logId: recentSent.id, skipped: true };
         }
       }
     }
@@ -302,22 +383,22 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
     const emailSubject = `RGMCET Faculty Selection Confirmation - ${student.reg_no}`;
     const nowIso = new Date().toISOString();
 
-    // 3. Log as PENDING
+    // 5. Log as PENDING targeting college email
     const insertLog = db.prepare(`
       INSERT INTO email_logs (student_id, recipient_email, subject, email_type, status, attempt_count, created_at, updated_at)
       VALUES (?, ?, ?, 'SELECTION_CONFIRMATION', 'PENDING', 1, ?, ?)
-    `).run(student.id, student.email, emailSubject, nowIso, nowIso);
+    `).run(student.id, collegeEmail, emailSubject, nowIso, nowIso);
 
     const logId = insertLog.lastInsertRowid;
 
-    // 4. Generate HTML Content
-    const htmlContent = generateConfirmationEmailHtml(student, selections);
+    // 6. Generate HTML Content with confirmed faculty table
+    const htmlContent = generateConfirmationEmailHtml(student, selections, collegeEmail);
     const transporter = getTransporter();
 
     try {
       await transporter.sendMail({
         from: process.env.SMTP_FROM || '"RGMCET Faculty Selection Portal" <no-reply@rgmcet.edu.in>',
-        to: student.email,
+        to: collegeEmail,
         subject: emailSubject,
         html: htmlContent
       });
@@ -329,8 +410,8 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
         WHERE id = ?
       `).run(sentIso, sentIso, logId);
 
-      console.log(`[EmailService] Confirmation email successfully sent to ${student.email} (${student.reg_no}).`);
-      return { success: true, logId, status: 'SENT', recipient: student.email };
+      console.log(`[EmailService] Confirmation email successfully sent to college email ${collegeEmail} (${student.reg_no}) with ${selections.length} confirmed courses.`);
+      return { success: true, logId, status: 'SENT', recipient: collegeEmail, completedCourses: selections.length };
     } catch (sendErr) {
       const failIso = new Date().toISOString();
       db.prepare(`
@@ -339,9 +420,9 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
         WHERE id = ?
       `).run(sendErr.message || 'SMTP delivery failure', failIso, logId);
 
-      console.error(`[EmailService] Delivery failed to ${student.email}:`, sendErr.message);
+      console.error(`[EmailService] Delivery failed to college email ${collegeEmail}:`, sendErr.message);
       // Return failed status safely without undoing selections
-      return { success: false, logId, status: 'FAILED', error: sendErr.message };
+      return { success: false, logId, status: 'FAILED', error: sendErr.message, recipient: collegeEmail };
     }
   } catch (err) {
     console.error('[EmailService] Unexpected error in sendSelectionConfirmationEmail:', err.message);
@@ -351,6 +432,7 @@ async function sendSelectionConfirmationEmail(studentId, isResend = false) {
 
 /**
  * Retries sending an email for a previously failed or pending email log
+ * Always delivers exclusively to the student's official college email
  * @param {number} logId
  */
 async function retryFailedEmail(logId) {
@@ -361,13 +443,15 @@ async function retryFailedEmail(logId) {
 
   // Prevent duplicate if already marked as SENT
   if (log.status === 'SENT') {
-    return { success: true, message: 'Email has already been sent successfully. Duplicate delivery prevented.', log };
+    return { success: true, message: 'Email has already been delivered to college mail. Duplicate delivery prevented.', log };
   }
 
   const student = db.prepare('SELECT * FROM students WHERE id = ?').get(log.student_id);
   if (!student) {
     throw new Error('Student associated with this email log was not found.');
   }
+
+  const collegeEmail = getStudentCollegeEmail(student);
 
   const selections = db.prepare(`
     SELECT 
@@ -390,16 +474,16 @@ async function retryFailedEmail(logId) {
   `).all(student.id);
 
   if (selections.length === 0) {
-    throw new Error('No confirmed selections found for this student to email.');
+    throw new Error('No confirmed faculty selections found for this student to email.');
   }
 
-  const htmlContent = generateConfirmationEmailHtml(student, selections);
+  const htmlContent = generateConfirmationEmailHtml(student, selections, collegeEmail);
   const transporter = getTransporter();
 
   try {
     await transporter.sendMail({
       from: process.env.SMTP_FROM || '"RGMCET Faculty Selection Portal" <no-reply@rgmcet.edu.in>',
-      to: student.email,
+      to: collegeEmail,
       subject: log.subject,
       html: htmlContent
     });
@@ -407,18 +491,18 @@ async function retryFailedEmail(logId) {
     const nowIso = new Date().toISOString();
     db.prepare(`
       UPDATE email_logs 
-      SET status = 'SENT', sent_at = ?, attempt_count = attempt_count + 1, error_message = NULL, updated_at = ? 
+      SET recipient_email = ?, status = 'SENT', sent_at = ?, attempt_count = attempt_count + 1, error_message = NULL, updated_at = ? 
       WHERE id = ?
-    `).run(nowIso, nowIso, log.id);
+    `).run(collegeEmail, nowIso, nowIso, log.id);
 
-    return { success: true, message: `Email delivered successfully to ${student.email} on attempt ${log.attempt_count + 1}!` };
+    return { success: true, message: `Email delivered successfully to college email ${collegeEmail} on attempt ${log.attempt_count + 1}!` };
   } catch (err) {
     const nowIso = new Date().toISOString();
     db.prepare(`
       UPDATE email_logs 
-      SET status = 'FAILED', attempt_count = attempt_count + 1, error_message = ?, updated_at = ? 
+      SET recipient_email = ?, status = 'FAILED', attempt_count = attempt_count + 1, error_message = ?, updated_at = ? 
       WHERE id = ?
-    `).run(err.message || 'SMTP delivery failure', nowIso, log.id);
+    `).run(collegeEmail, err.message || 'SMTP delivery failure', nowIso, log.id);
 
     throw new Error(`Email retry failed: ${err.message}`);
   }
@@ -436,5 +520,7 @@ module.exports = {
   sendSelectionConfirmationEmail,
   retryFailedEmail,
   resendStudentEmail,
-  generateConfirmationEmailHtml
+  generateConfirmationEmailHtml,
+  isStudentSelectionComplete,
+  getStudentCollegeEmail
 };
