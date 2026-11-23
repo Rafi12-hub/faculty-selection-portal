@@ -140,8 +140,8 @@ router.post('/reserve', requireStudent, (req, res) => {
         `).get(student.id, subjectInfo.elective_group);
 
         if (existingElectiveSel) {
-          const oeTitle = subjectInfo.elective_group === 'OE1' ? 'Open Elective – I' : 'Open Elective – II';
-          throw new Error(`You have already completed your selection for ${oeTitle} with "${existingElectiveSel.subject_name}" (${existingElectiveSel.faculty_name}). Only one subject & faculty can be selected per open elective.`);
+          const oeTitle = subjectInfo.elective_group === 'OE1' ? 'Professional Elective – I' : 'Professional Elective – II';
+          throw new Error(`You have already completed your selection for ${oeTitle} with "${existingElectiveSel.subject_name}" (${existingElectiveSel.faculty_name}). Only one subject & faculty can be selected per professional elective.`);
         }
       } else {
         const existingSubjectSelection = db.prepare(`

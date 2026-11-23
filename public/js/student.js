@@ -490,16 +490,22 @@ function renderStudentSubjects() {
           ` : `
             <div class="text-xs ${PENDING_SELECTIONS[subject.id] ? 'text-indigo-700 font-bold' : 'text-slate-500'} flex items-center gap-1.5">
               ${PENDING_SELECTIONS[subject.id]
-                ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Faculty choice marked. Submit all selections below.</span>'
+                ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Faculty choice marked. Click OK to confirm or submit all below.</span>'
                 : '<i class="fa-regular fa-circle text-slate-400 mr-1"></i><span>Click an oval above to mark your preferred faculty.</span>'}
             </div>
+            ${PENDING_SELECTIONS[subject.id] ? `
+              <button onclick="submitSubjectSelection(${subject.id})" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer">
+                <i class="fa-solid fa-check"></i>
+                <span>OK - Confirm Faculty</span>
+              </button>
+            ` : ''}
           `)}
         </div>
       </div>
     `;
   }).join('');
 
-  // 2. Open Electives Cards (Subject in Subject for Group A & Group B)
+  // 2. Professional Electives Cards (Subject in Subject for Group A & Group B)
   function buildOECardHtml(oeKey, oeTitle, oeSubList, cardIndex) {
     if (!oeSubList || oeSubList.length === 0) return '';
     const confirmedSel = STUDENT_SELECTIONS.find(sel => {
@@ -526,7 +532,7 @@ function renderStudentSubjects() {
         <div class="flex items-start justify-between gap-3">
           <div>
             <div class="flex items-center gap-2">
-              <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px]">OPEN ELECTIVE</span>
+              <span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px]">PROFESSIONAL ELECTIVE</span>
               <h3 class="text-base sm:text-lg font-bold text-slate-900">${cardIndex}. Subject: ${oeTitle}</h3>
             </div>
             <p class="text-xs text-slate-500 italic mt-0.5 font-medium">Select 1 Subject from the options below and mark 1 faculty member.</p>
@@ -645,9 +651,15 @@ function renderStudentSubjects() {
             ` : `
               <div class="text-xs ${pending.mappingId ? 'text-indigo-700 font-bold' : 'text-slate-500'} flex items-center gap-1.5">
                 ${pending.mappingId 
-                  ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Elective marked. Submit all selections below.</span>'
+                  ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><span>Elective marked. Click OK to confirm or submit all below.</span>'
                   : '<i class="fa-regular fa-circle text-slate-400 mr-1"></i><span>Choose a subject and an available faculty above.</span>'}
               </div>
+              ${pending.mappingId ? `
+                <button onclick="confirmInternalOESelection('${oeKey}')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2 cursor-pointer">
+                  <i class="fa-solid fa-check"></i>
+                  <span>OK - Confirm Faculty</span>
+                </button>
+              ` : ''}
             `}
           </div>
         `}
@@ -655,8 +667,8 @@ function renderStudentSubjects() {
     `;
   }
 
-  const oeCardsHtml = buildOECardHtml('OE1', 'Open Elective – I', oe1Subjects, coreSubjects.length + 1) +
-                      buildOECardHtml('OE2', 'Open Elective – II', oe2Subjects, coreSubjects.length + 2);
+  const oeCardsHtml = buildOECardHtml('OE1', 'Professional Elective – I', oe1Subjects, coreSubjects.length + 1) +
+                      buildOECardHtml('OE2', 'Professional Elective – II', oe2Subjects, coreSubjects.length + 2);
 
   // Calculate combined progress
   const totalAllCourses = coreSubjects.length + (oe1Subjects.length > 0 ? 1 : 0) + (oe2Subjects.length > 0 ? 1 : 0);
@@ -701,8 +713,8 @@ function renderStudentSubjects() {
             <button 
               onclick="openBatchConfirmationModal()"
               class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30 cursor-pointer">
-              <i class="fa-solid fa-lock text-sm"></i>
-              <span>Confirm All Selected (${pendingCoreCount + pendingOe1Count + pendingOe2Count})</span>
+              <i class="fa-solid fa-check text-sm"></i>
+              <span>OK - Confirm All Selected (${pendingCoreCount + pendingOe1Count + pendingOe2Count})</span>
             </button>
           ` : (isAllFilled ? `
             <button 
@@ -748,7 +760,7 @@ function openBatchConfirmationModal() {
     }
   }
 
-  // 2. Open Elective – I
+  // 2. Professional Elective – I
   const confirmedOe1 = STUDENT_SELECTIONS.some(s => {
     const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
     return sub && sub.elective_group === 'OE1' && s.status === 'CONFIRMED';
@@ -760,7 +772,7 @@ function openBatchConfirmationModal() {
     if (mapping && subject) {
       chosenMappings.push(mapping.id);
       subjectsToConfirm.push({
-        subjectName: `[Open Elective – I] ${subject.name}`,
+        subjectName: `[Professional Elective – I] ${subject.name}`,
         subjectCode: subject.code,
         facultyName: mapping.faculty_name,
         facultyDesignation: mapping.faculty_designation || mapping.designation
@@ -768,7 +780,7 @@ function openBatchConfirmationModal() {
     }
   }
 
-  // 3. Open Elective – II
+  // 3. Professional Elective – II
   const confirmedOe2 = STUDENT_SELECTIONS.some(s => {
     const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
     return sub && sub.elective_group === 'OE2' && s.status === 'CONFIRMED';
@@ -780,7 +792,7 @@ function openBatchConfirmationModal() {
     if (mapping && subject) {
       chosenMappings.push(mapping.id);
       subjectsToConfirm.push({
-        subjectName: `[Open Elective – II] ${subject.name}`,
+        subjectName: `[Professional Elective – II] ${subject.name}`,
         subjectCode: subject.code,
         facultyName: mapping.faculty_name,
         facultyDesignation: mapping.faculty_designation || mapping.designation
@@ -834,8 +846,8 @@ function openBatchConfirmationModal() {
         Go Back & Edit
       </button>
       <button id="btn-batch-confirm" onclick="executeBatchReservation()" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2">
-        <i class="fa-solid fa-check-double"></i>
-        <span>Yes, Lock & Confirm Selections</span>
+        <i class="fa-solid fa-check"></i>
+        <span>OK - Lock & Confirm All Selections</span>
       </button>
     `
   });
@@ -1096,8 +1108,8 @@ function confirmFacultyReservation(mappingId, facultyName, subjectName, subjectC
         Go Back
       </button>
       <button id="btn-confirm-reserve" onclick="executeReservation(${mappingId})" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center gap-2">
-        <i class="fa-solid fa-check-double"></i>
-        <span>Confirm & Reserve Seat</span>
+        <i class="fa-solid fa-check"></i>
+        <span>OK - Confirm & Reserve Seat</span>
       </button>
     `
   });
@@ -1197,7 +1209,7 @@ function renderStudentSelections() {
               </div>
               <div class="rounded-xl bg-slate-50 p-3">
                 <div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Selected Subject</div>
-                <div class="mt-1 break-words text-sm font-bold text-slate-900">${s.subject_elective_group ? `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-700 mr-1.5">${s.subject_elective_group === 'OE1' ? 'Open Elective – I' : 'Open Elective – II'}</span>` : ''}${s.subject_name}</div>
+                <div class="mt-1 break-words text-sm font-bold text-slate-900">${s.subject_elective_group ? `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-700 mr-1.5">${s.subject_elective_group === 'OE1' ? 'Professional Elective – I' : 'Professional Elective – II'}</span>` : ''}${s.subject_name}</div>
                 <div class="mono-font mt-0.5 text-[11px] text-slate-500">${s.subject_code}</div>
               </div>
               <div class="rounded-xl bg-slate-50 p-3">

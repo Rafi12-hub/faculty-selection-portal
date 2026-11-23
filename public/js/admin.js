@@ -676,7 +676,7 @@ function renderSubjectsList() {
                   <td class="py-3.5 px-6">
                     <div class="font-bold text-slate-900 flex items-center gap-2">
                       <span>${s.name}</span>
-                      ${s.elective_group === 'OE1' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">Open Elective – I</span>' : (s.elective_group === 'OE2' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200">Open Elective – II</span>' : '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">Core</span>')}
+                      ${s.elective_group === 'OE1' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">Professional Elective – I</span>' : (s.elective_group === 'OE2' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200">Professional Elective – II</span>' : '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">Core</span>')}
                     </div>
                     <div class="mono-font text-[11px] text-blue-600 font-semibold">${s.code} &bull; ${s.credits} Credits</div>
                   </td>
@@ -764,8 +764,8 @@ function openAddSubjectModal() {
           <label class="block font-semibold text-slate-700 mb-1">Subject Type / Elective Classification</label>
           <select id="sub-elective-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
             <option value="">Core Curriculum Subject</option>
-            <option value="OE1">Open Elective – I (OE1)</option>
-            <option value="OE2">Open Elective – II (OE2)</option>
+            <option value="OE1">Professional Elective – I (PE1)</option>
+            <option value="OE2">Professional Elective – II (PE2)</option>
           </select>
         </div>
         <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
@@ -847,8 +847,8 @@ function openEditSubjectModal(id) {
           <label class="block font-semibold text-slate-700 mb-1">Subject Type / Elective Classification</label>
           <select id="edit-sub-elective-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
             <option value="" ${!s.elective_group ? 'selected' : ''}>Core Curriculum Subject</option>
-            <option value="OE1" ${s.elective_group === 'OE1' ? 'selected' : ''}>Open Elective – I (OE1)</option>
-            <option value="OE2" ${s.elective_group === 'OE2' ? 'selected' : ''}>Open Elective – II (OE2)</option>
+            <option value="OE1" ${s.elective_group === 'OE1' ? 'selected' : ''}>Professional Elective – I (PE1)</option>
+            <option value="OE2" ${s.elective_group === 'OE2' ? 'selected' : ''}>Professional Elective – II (PE2)</option>
           </select>
         </div>
         <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
@@ -1042,10 +1042,10 @@ function renderMappingsList() {
           Core Subjects (${subjects.filter(s => !s.elective_group || s.elective_group === 'NONE').length})
         </button>
         <button onclick="ADMIN_DATA.mappingFilter = 'OE1'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'OE1' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
-          Open Elective – I (${subjects.filter(s => s.elective_group === 'OE1').length})
+          Professional Elective – I (${subjects.filter(s => s.elective_group === 'OE1').length})
         </button>
         <button onclick="ADMIN_DATA.mappingFilter = 'OE2'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === 'OE2' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
-          Open Elective – II (${subjects.filter(s => s.elective_group === 'OE2').length})
+          Professional Elective – II (${subjects.filter(s => s.elective_group === 'OE2').length})
         </button>
         <button onclick="ADMIN_DATA.mappingFilter = '2'; renderMappingsList();" class="px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${filter === '2' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">
           2nd Year II-II (${subjects.filter(s => s.academic_year === 2).length})
@@ -1081,7 +1081,7 @@ function renderMappingsList() {
                   <div>
                     <div class="flex items-center gap-2">
                       <h4 class="text-base font-bold text-white tracking-tight">${sub.name}</h4>
-                      ${sub.elective_group === 'OE1' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-purple-500/30 text-purple-200 border border-purple-400/30">Open Elective – I</span>' : (sub.elective_group === 'OE2' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">Open Elective – II</span>' : '')}
+                      ${sub.elective_group === 'OE1' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-purple-500/30 text-purple-200 border border-purple-400/30">Professional Elective – I</span>' : (sub.elective_group === 'OE2' ? '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">Professional Elective – II</span>' : '')}
                     </div>
                     <p class="text-xs text-blue-200 mt-0.5">
                       Year ${sub.academic_year} &bull; Semester ${sub.semester} &bull; <strong class="text-white">${mapList.length} Faculties Mapped</strong>
@@ -1261,15 +1261,19 @@ function openAddMappingModal(preselectedSubjectId = null) {
             <span>Independent seat capacity assigned to each selected faculty member.</span>
           </div>
         </div>
-
-        <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-semibold">Cancel</button>
-          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md flex items-center gap-2">
+      </form>
+    `,
+    footer: `
+      <div class="w-full flex flex-col sm:flex-row items-center justify-between gap-3">
+        <span id="map-footer-selected-count" class="text-xs font-semibold text-slate-500">0 faculties selected</span>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold text-xs transition-colors">Cancel</button>
+          <button type="button" onclick="document.getElementById('form-add-mapping').requestSubmit()" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/25 transition-all flex items-center gap-2 cursor-pointer">
             <i class="fa-solid fa-check"></i>
-            <span>Confirm & Map Faculties</span>
+            <span>OK - Confirm Selected Faculty</span>
           </button>
         </div>
-      </form>
+      </div>
     `
   });
 }
@@ -1312,8 +1316,13 @@ function filterMappingFacultyChecklist() {
 function updateSelectedFacCount() {
   const checked = document.querySelectorAll('input[name="map-faculty-id"]:checked');
   const countEl = document.getElementById('map-selected-count');
+  const footerCountEl = document.getElementById('map-footer-selected-count');
+  const text = `${checked.length} facult${checked.length === 1 ? 'y' : 'ies'} selected`;
   if (countEl) {
-    countEl.textContent = `${checked.length} facult${checked.length === 1 ? 'y' : 'ies'} selected`;
+    countEl.textContent = text;
+  }
+  if (footerCountEl) {
+    footerCountEl.textContent = `${checked.length} facult${checked.length === 1 ? 'y' : 'ies'} selected for mapping`;
   }
 }
 
