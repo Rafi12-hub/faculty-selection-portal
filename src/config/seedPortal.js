@@ -54,10 +54,10 @@ function runAutoSeed(db) {
       require('../../scripts/seed_all_students');
     }
 
-    // 4b. Check 377 2nd Year Students (2025 Batch)
+    // 4b. Check 421 2nd Year Students (2025 Batch + Lateral Entry Group B)
     const y2StudentCount = db.prepare("SELECT count(*) as count FROM students WHERE academic_year = 2").get().count;
-    if (y2StudentCount < 370) {
-      console.log(`[AutoSeed] Seeding 377 Year 2 students from official 2025 batch list (current: ${y2StudentCount})...`);
+    if (y2StudentCount < 421) {
+      console.log(`[AutoSeed] Seeding 421 Year 2 students including Lateral Entry Group B (current: ${y2StudentCount})...`);
       const { seedYear2Students } = require('../../scripts/seed_year2_students');
       seedYear2Students(db);
     }
