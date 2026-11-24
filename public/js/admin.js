@@ -4786,13 +4786,19 @@ function openSmtpSettingsModal() {
         </div>
 
         <!-- Quick Presets -->
-        <div class="flex items-center gap-2">
-          <span class="text-slate-500 font-semibold text-[11px]">Quick Presets:</span>
-          <button type="button" onclick="applySmtpPreset('gmail')" class="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-[10px] transition cursor-pointer">
-            Gmail / Google Workspace (RGMCET)
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="text-slate-500 font-semibold text-[11px]">Cloud Presets:</span>
+          <button type="button" onclick="applySmtpPreset('brevo')" class="px-2.5 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold text-[10px] transition cursor-pointer" title="Recommended for Railway: Sends to ANY student email via Port 443 with 0 domain blocks">
+            <i class="fa-solid fa-bolt"></i> Brevo API (Port 443 - All Students)
           </button>
-          <button type="button" onclick="applySmtpPreset('outlook')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] transition cursor-pointer">
-            Outlook / Office 365
+          <button type="button" onclick="applySmtpPreset('webhook')" class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-[10px] transition cursor-pointer" title="Google Apps Script Relay: Free Gmail sender over Port 443">
+            <i class="fa-brands fa-google"></i> Google Webhook (Port 443)
+          </button>
+          <button type="button" onclick="applySmtpPreset('resend')" class="px-2.5 py-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold text-[10px] transition cursor-pointer">
+            Resend API (Port 443)
+          </button>
+          <button type="button" onclick="applySmtpPreset('gmail')" class="px-2.5 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold text-[10px] transition cursor-pointer">
+            Gmail SMTP (Port 587)
           </button>
         </div>
 
@@ -4857,8 +4863,27 @@ function applySmtpPreset(type) {
   const hostEl = document.getElementById('smtp-host');
   const portEl = document.getElementById('smtp-port');
   const secureEl = document.getElementById('smtp-secure');
+  const userEl = document.getElementById('smtp-user');
+  const passEl = document.getElementById('smtp-pass');
 
-  if (type === 'gmail' || type === 'rgmcet') {
+  if (type === 'brevo') {
+    if (hostEl) hostEl.value = 'api.brevo.com';
+    if (portEl) portEl.value = '443';
+    if (secureEl) secureEl.checked = true;
+    if (userEl) userEl.placeholder = 'Your Brevo verified email (e.g. rafibudathala893@gmail.com)';
+    if (passEl) passEl.placeholder = 'Paste Brevo API Key (xkeysib-...)';
+  } else if (type === 'webhook') {
+    if (hostEl) hostEl.value = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+    if (portEl) portEl.value = '443';
+    if (secureEl) secureEl.checked = true;
+    if (userEl) userEl.value = 'webhook';
+  } else if (type === 'resend') {
+    if (hostEl) hostEl.value = 'api.resend.com';
+    if (portEl) portEl.value = '443';
+    if (secureEl) secureEl.checked = true;
+    if (userEl) userEl.value = 'resend';
+    if (passEl) passEl.placeholder = 'Paste Resend API Key (re_...)';
+  } else if (type === 'gmail' || type === 'rgmcet') {
     if (hostEl) hostEl.value = 'smtp.gmail.com';
     if (portEl) portEl.value = '587';
     if (secureEl) secureEl.checked = false;

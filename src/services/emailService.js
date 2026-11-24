@@ -2,11 +2,18 @@ const nodemailer = require('nodemailer');
 const { db } = require('../config/database');
 
 /**
- * Returns the target recipient email address
- * Locked strictly to 24091a05c6@rgmcet.edu.in as requested by the user for testing
+ * Returns the target recipient email address for a student
+ * Resolves to the student's official college email: <reg_no>@rgmcet.edu.in
  */
 function getStudentCollegeEmail(student) {
-  return '24091a05c6@rgmcet.edu.in';
+  if (!student) return null;
+  if (student.email && student.email.trim().includes('@')) {
+    return student.email.trim().toLowerCase();
+  }
+  if (student.reg_no) {
+    return `${student.reg_no.trim().toLowerCase()}@rgmcet.edu.in`;
+  }
+  return null;
 }
 
 /**
@@ -145,7 +152,33 @@ async function sendRawEmail({ to, subject, html }) {
     return { messageId: 'webhook-' + Date.now() };
   }
 
-  // 2. Resend HTTP API (Port 443 HTTPS - completely unblocked on Railway!)
+  // 2. Brevo (Sendinblue) HTTP API (Port 443 HTTPS - sends to ANY student email with 0 port blocks!)
+  const brevoKey = (config.pass && config.pass.startsWith('xkeysib-')) ? config.pass : (process.env.BREVO_API_KEY || (config.user && config.user.startsWith('xkeysib-') ? config.user : null));
+  if (brevoKey || config.host === 'api.brevo.com') {
+    const key = (brevoKey || config.pass).trim();
+    const senderEmail = (config.user && config.user.includes('@')) ? config.user.trim() : 'rafibudathala893@gmail.com';
+    const recipientList = Array.isArray(to) ? to.map(e => ({ email: e })) : [{ email: to }];
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': key,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: 'RGMCET Faculty Selection Portal', email: senderEmail },
+        to: recipientList,
+        subject: subject,
+        htmlContent: html
+      })
+    }).then(r => r.json());
+
+    if (res.message && !res.messageId) {
+      throw new Error('Brevo API Error: ' + res.message);
+    }
+    return { messageId: res.messageId || 'brevo-' + Date.now() };
+  }
+
+  // 3. Resend HTTP API (Port 443 HTTPS - completely unblocked on Railway!)
   const resendKey = (config.pass && config.pass.startsWith('re_')) ? config.pass : (process.env.RESEND_API_KEY || (config.user && config.user.startsWith('re_') ? config.user : null));
   if (resendKey || config.host === 'api.resend.com') {
     const key = resendKey || config.pass;
