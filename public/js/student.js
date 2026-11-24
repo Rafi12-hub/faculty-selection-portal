@@ -677,42 +677,53 @@ function renderStudentSubjects() {
   const totalFilled = totalConfirmed + pendingCoreCount + pendingOe1Count + pendingOe2Count;
   const isAllFilled = totalFilled >= totalAllCourses && totalAllCourses > 0;
   const remaining = totalAllCourses - totalFilled;
+  const allAlreadyConfirmed = totalConfirmed >= totalAllCourses && totalAllCourses > 0;
 
   // Single Master Confirmation Card at the bottom of the form
   const bottomSubmitBar = `
-    <div class="sticky bottom-4 z-20 mt-8 bg-white/95 backdrop-blur-md rounded-2xl border-2 ${isAllFilled ? 'border-emerald-500 shadow-2xl shadow-emerald-500/20' : 'border-slate-300 shadow-xl'} p-5 sm:p-6 transition-all">
+    <div class="sticky bottom-4 z-20 mt-8 bg-white/95 backdrop-blur-md rounded-2xl border-2 ${isAllFilled ? 'border-emerald-500 shadow-2xl shadow-emerald-500/20' : 'border-amber-300 shadow-xl'} p-5 sm:p-6 transition-all">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2.5">
-            <span class="w-3 h-3 rounded-full ${isAllFilled ? 'bg-emerald-500 animate-pulse' : 'bg-indigo-500'}"></span>
+            <span class="w-3 h-3 rounded-full ${allAlreadyConfirmed ? 'bg-emerald-500' : (isAllFilled ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500')}"></span>
             <h4 class="text-base font-black text-slate-900">
-              Course Selection Summary (${totalFilled} / ${totalAllCourses} Chosen)
+              Course Selection Progress (${totalFilled} / ${totalAllCourses} Selected)
             </h4>
           </div>
-          <p class="text-xs text-slate-500 mt-1">
-            ${isAllFilled 
-              ? '🎉 All courses have a selected faculty! Confirm your choices above or download your confirmation slip.' 
-              : `Please mark your faculty choice for all courses before submitting (${remaining} course${remaining > 1 ? 's' : ''} remaining).`}
+          <p class="text-xs ${isAllFilled ? 'text-emerald-700 font-semibold' : 'text-slate-500'} mt-1">
+            ${allAlreadyConfirmed 
+              ? '🎉 All courses are locked and confirmed! You can view your confirmed choices or download your official slip.' 
+              : (isAllFilled 
+                ? '🎉 All faculties have been selected! You can now review and confirm your choices.' 
+                : `⚠️ Please select a faculty for all ${totalAllCourses} courses before confirming (${remaining} course${remaining > 1 ? 's' : ''} remaining). Partial submissions are disabled.`)}
           </p>
         </div>
 
         <div class="flex items-center gap-3">
-          ${(pendingCoreCount + pendingOe1Count + pendingOe2Count > 0 && isLiveActive) ? `
-            <button 
-              onclick="openBatchConfirmationModal()"
-              class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-600/30 cursor-pointer">
-              <i class="fa-solid fa-check text-sm"></i>
-              <span>OK - Confirm All Selected (${pendingCoreCount + pendingOe1Count + pendingOe2Count})</span>
-            </button>
-          ` : (isAllFilled ? `
+          ${allAlreadyConfirmed ? `
             <button 
               onclick="switchStudentTab('selections')"
               class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 cursor-pointer">
               <i class="fa-solid fa-circle-check text-sm"></i>
               <span>View Confirmed Courses</span>
             </button>
+          ` : (isLiveActive ? (isAllFilled ? `
+            <button 
+              onclick="openBatchConfirmationModal()"
+              class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 cursor-pointer animate-pulse transform hover:scale-[1.02]">
+              <i class="fa-solid fa-clipboard-check text-sm"></i>
+              <span>OK - Confirm All Faculties (${totalFilled}/${totalAllCourses})</span>
+            </button>
           ` : `
-            <span class="text-xs font-semibold text-slate-500">${remaining} courses to choose</span>
+            <button 
+              disabled
+              class="w-full md:w-auto px-6 py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300 shadow-none"
+              title="You can confirm only after selecting a faculty for all ${totalAllCourses} courses">
+              <i class="fa-solid fa-lock text-sm"></i>
+              <span>Select All Faculties to Confirm (${totalFilled} / ${totalAllCourses})</span>
+            </button>
+          `) : `
+            <span class="text-xs font-semibold text-slate-500">Selection Round Inactive</span>
           `)}
         </div>
       </div>
@@ -724,11 +735,39 @@ function renderStudentSubjects() {
 
 // Master Confirmation Modal reviewing all chosen faculties
 function openBatchConfirmationModal() {
+  const is3rdYear = STATE.student && STATE.student.academic_year === 3;
+  const coreSubjects = STUDENT_SUBJECTS.filter(s => (!s.elective_group || s.elective_group === 'NONE') && s.status === 'ACTIVE');
+  const oe1Subjects = is3rdYear ? STUDENT_SUBJECTS.filter(s => s.elective_group === 'OE1' && s.status === 'ACTIVE') : [];
+  const oe2Subjects = is3rdYear ? STUDENT_SUBJECTS.filter(s => s.elective_group === 'OE2' && s.status === 'ACTIVE') : [];
+  const totalAllCourses = coreSubjects.length + (oe1Subjects.length > 0 ? 1 : 0) + (oe2Subjects.length > 0 ? 1 : 0);
+
+  const confirmedCoreCount = coreSubjects.filter(sub => 
+    STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED')
+  ).length;
+  const confirmedOe1 = oe1Subjects.some(sub => STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED'));
+  const confirmedOe2 = oe2Subjects.some(sub => STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED'));
+  const totalConfirmed = confirmedCoreCount + (confirmedOe1 ? 1 : 0) + (confirmedOe2 ? 1 : 0);
+
+  const pendingCoreCount = coreSubjects.filter(sub => {
+    const hasConf = STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED');
+    return !hasConf && PENDING_SELECTIONS[sub.id];
+  }).length;
+  const pendingOe1Count = (!confirmedOe1 && PENDING_OE_INTERNAL['OE1'] && PENDING_OE_INTERNAL['OE1'].mappingId) ? 1 : 0;
+  const pendingOe2Count = (!confirmedOe2 && PENDING_OE_INTERNAL['OE2'] && PENDING_OE_INTERNAL['OE2'].mappingId) ? 1 : 0;
+
+  const totalFilled = totalConfirmed + pendingCoreCount + pendingOe1Count + pendingOe2Count;
+  const isAllFilled = totalFilled >= totalAllCourses && totalAllCourses > 0;
+  const remaining = totalAllCourses - totalFilled;
+
+  if (!isAllFilled) {
+    showToast(`You must select a faculty for all ${totalAllCourses} courses before confirming (${remaining} course${remaining > 1 ? 's' : ''} remaining).`, 'warning');
+    return;
+  }
+
   const chosenMappings = [];
   const subjectsToConfirm = [];
 
   // 1. Regular Core Subjects
-  const coreSubjects = STUDENT_SUBJECTS.filter(s => (!s.elective_group || s.elective_group === 'NONE') && s.status === 'ACTIVE');
   for (const subject of coreSubjects) {
     const isAlreadyConfirmed = STUDENT_SELECTIONS.find(s => s.subject_id === subject.id && s.status === 'CONFIRMED');
     if (!isAlreadyConfirmed) {
@@ -749,10 +788,6 @@ function openBatchConfirmationModal() {
   }
 
   // 2. Professional Elective – I
-  const confirmedOe1 = STUDENT_SELECTIONS.some(s => {
-    const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
-    return sub && sub.elective_group === 'OE1' && s.status === 'CONFIRMED';
-  });
   if (!confirmedOe1 && PENDING_OE_INTERNAL['OE1'] && PENDING_OE_INTERNAL['OE1'].mappingId) {
     const p = PENDING_OE_INTERNAL['OE1'];
     const mapping = STUDENT_MAPPINGS.find(m => m.id === p.mappingId);
@@ -769,10 +804,6 @@ function openBatchConfirmationModal() {
   }
 
   // 3. Professional Elective – II
-  const confirmedOe2 = STUDENT_SELECTIONS.some(s => {
-    const sub = STUDENT_SUBJECTS.find(sub => sub.id === s.subject_id);
-    return sub && sub.elective_group === 'OE2' && s.status === 'CONFIRMED';
-  });
   if (!confirmedOe2 && PENDING_OE_INTERNAL['OE2'] && PENDING_OE_INTERNAL['OE2'].mappingId) {
     const p = PENDING_OE_INTERNAL['OE2'];
     const mapping = STUDENT_MAPPINGS.find(m => m.id === p.mappingId);
@@ -872,6 +903,32 @@ async function executeBatchReservation() {
   });
   if (!confirmedOe2 && PENDING_OE_INTERNAL['OE2'] && PENDING_OE_INTERNAL['OE2'].mappingId) {
     mappingIds.push(PENDING_OE_INTERNAL['OE2'].mappingId);
+  }
+
+  // Strict check: all required courses must be chosen
+  const is3rdYear = STATE.student && STATE.student.academic_year === 3;
+  const oe1Subjects = is3rdYear ? STUDENT_SUBJECTS.filter(s => s.elective_group === 'OE1' && s.status === 'ACTIVE') : [];
+  const oe2Subjects = is3rdYear ? STUDENT_SUBJECTS.filter(s => s.elective_group === 'OE2' && s.status === 'ACTIVE') : [];
+  const totalAllCourses = coreSubjects.length + (oe1Subjects.length > 0 ? 1 : 0) + (oe2Subjects.length > 0 ? 1 : 0);
+  const confirmedCoreCount = coreSubjects.filter(sub => 
+    STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED')
+  ).length;
+  const totalConfirmed = confirmedCoreCount + (confirmedOe1 ? 1 : 0) + (confirmedOe2 ? 1 : 0);
+  const pendingCoreCount = coreSubjects.filter(sub => {
+    const hasConf = STUDENT_SELECTIONS.some(s => s.subject_id === sub.id && s.status === 'CONFIRMED');
+    return !hasConf && PENDING_SELECTIONS[sub.id];
+  }).length;
+  const pendingOe1Count = (!confirmedOe1 && PENDING_OE_INTERNAL['OE1'] && PENDING_OE_INTERNAL['OE1'].mappingId) ? 1 : 0;
+  const pendingOe2Count = (!confirmedOe2 && PENDING_OE_INTERNAL['OE2'] && PENDING_OE_INTERNAL['OE2'].mappingId) ? 1 : 0;
+  const totalFilled = totalConfirmed + pendingCoreCount + pendingOe1Count + pendingOe2Count;
+
+  if (totalFilled < totalAllCourses) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fa-solid fa-check"></i><span>OK - Lock & Confirm All Selections</span>`;
+    }
+    showToast(`You must select a faculty for all ${totalAllCourses} courses before confirming (${totalAllCourses - totalFilled} remaining).`, 'error');
+    return;
   }
 
   try {

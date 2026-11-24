@@ -410,4 +410,170 @@ router.get('/export-students-excel', (req, res) => {
   }
 });
 
+// GET /api/reports/export-unselected-students-excel - Download students who have not selected faculty or have incomplete selections
+router.get('/export-unselected-students-excel', (req, res) => {
+  try {
+    const { academic_year, section } = req.query;
+
+    let stuSql = `
+      SELECT 
+        s.id,
+        s.reg_no,
+        s.name,
+        s.academic_year,
+        s.semester,
+        s.section as cohort_group,
+        s.email,
+        s.status
+      FROM students s
+      WHERE 1=1
+    `;
+    const params = [];
+    if (academic_year && academic_year !== 'ALL') {
+      stuSql += ` AND s.academic_year = ?`;
+      params.push(parseInt(academic_year, 10));
+    }
+    if (section && section !== 'ALL') {
+      stuSql += ` AND s.section = ?`;
+      params.push(section);
+    }
+    stuSql += ` ORDER BY s.academic_year ASC, s.semester ASC, s.section ASC, s.reg_no ASC`;
+    const allStudents = db.prepare(stuSql).all(...params);
+
+    const activeSubjects = db.prepare(`
+      SELECT id, code, name, academic_year, semester, elective_group
+      FROM subjects
+      WHERE status = 'ACTIVE'
+      ORDER BY academic_year, semester, code
+    `).all();
+
+    const curriculumMap = {};
+    for (const sub of activeSubjects) {
+      const key = `${sub.academic_year}_${sub.semester}`;
+      if (!curriculumMap[key]) {
+        curriculumMap[key] = { core: [], electives: {} };
+      }
+      if (!sub.elective_group || sub.elective_group === 'NONE' || sub.elective_group === '') {
+        curriculumMap[key].core.push(sub);
+      } else {
+        if (!curriculumMap[key].electives[sub.elective_group]) {
+          curriculumMap[key].electives[sub.elective_group] = [];
+        }
+        curriculumMap[key].electives[sub.elective_group].push(sub);
+      }
+    }
+
+    const allSelections = db.prepare(`
+      SELECT sel.student_id, sel.subject_id, sub.code as subject_code, sub.name as subject_name, sub.elective_group
+      FROM selections sel
+      JOIN subjects sub ON sel.subject_id = sub.id
+      WHERE sel.status = 'CONFIRMED'
+    `).all();
+
+    const selectionsByStudent = {};
+    for (const sel of allSelections) {
+      if (!selectionsByStudent[sel.student_id]) {
+        selectionsByStudent[sel.student_id] = [];
+      }
+      selectionsByStudent[sel.student_id].push(sel);
+    }
+
+    const pendingStudents = [];
+
+    for (const stu of allStudents) {
+      const key = `${stu.academic_year}_${stu.semester}`;
+      const curr = curriculumMap[key] || { core: [], electives: {} };
+      
+      const requiredCoreCount = curr.core.length;
+      const electiveGroupKeys = Object.keys(curr.electives);
+      const requiredElectiveCount = electiveGroupKeys.length;
+      const totalRequired = requiredCoreCount + requiredElectiveCount;
+
+      const studentSels = selectionsByStudent[stu.id] || [];
+      const confirmedCount = studentSels.length;
+
+      // Include student if they have incomplete selections (< totalRequired) or 0 selections
+      if (confirmedCount < totalRequired || totalRequired === 0) {
+        const missingList = [];
+        for (const core of curr.core) {
+          const hasChosen = studentSels.some(s => s.subject_id === core.id);
+          if (!hasChosen) {
+            missingList.push(core.code || core.name);
+          }
+        }
+        for (const eg of electiveGroupKeys) {
+          const hasChosenElective = studentSels.some(s => s.elective_group === eg);
+          if (!hasChosenElective) {
+            const label = eg === 'OE1' ? 'Prof. Elective-I (OE1)' : (eg === 'OE2' ? 'Prof. Elective-II (OE2)' : eg);
+            missingList.push(label);
+          }
+        }
+
+        const pendingCount = totalRequired - confirmedCount;
+        const statusLabel = confirmedCount === 0 ? 'NOT STARTED' : 'INCOMPLETE';
+
+        pendingStudents.push({
+          reg_no: stu.reg_no,
+          name: stu.name,
+          academic_year: stu.academic_year,
+          semester: stu.semester,
+          cohort_group: stu.cohort_group,
+          email: stu.email || `${stu.reg_no.toLowerCase()}@rgmcet.edu.in`,
+          required_courses: totalRequired,
+          selected_courses: confirmedCount,
+          pending_courses: pendingCount > 0 ? pendingCount : 0,
+          status_label: statusLabel,
+          missing_courses: missingList.join(', ') || 'All Courses Pending',
+          account_status: stu.status
+        });
+      }
+    }
+
+    const headers = [
+      'Sl. No',
+      'Registration Number',
+      'Student Name',
+      'Academic Year',
+      'Semester',
+      'Cohort Group',
+      'College Email',
+      'Required Courses',
+      'Selected Courses',
+      'Pending Courses Count',
+      'Selection Status',
+      'Pending / Missing Courses',
+      'Account Status'
+    ];
+
+    let csvContent = '\uFEFF' + headers.join(',') + '\r\n';
+
+    pendingStudents.forEach((p, idx) => {
+      const row = [
+        idx + 1,
+        escapeCSV(p.reg_no),
+        escapeCSV(p.name),
+        escapeCSV(`Year ${p.academic_year}`),
+        escapeCSV(`Sem ${p.semester}`),
+        escapeCSV(p.cohort_group),
+        escapeCSV(p.email),
+        p.required_courses,
+        p.selected_courses,
+        p.pending_courses,
+        escapeCSV(p.status_label),
+        escapeCSV(p.missing_courses),
+        escapeCSV(p.account_status)
+      ];
+      csvContent += row.join(',') + '\r\n';
+    });
+
+    const filename = `RGMCET_Pending_Students_Selection_${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csvContent);
+  } catch (err) {
+    console.error('Error generating pending students Excel export:', err);
+    res.status(500).send('Export failed: ' + err.message);
+  }
+});
+
 module.exports = router;

@@ -2621,6 +2621,10 @@ function renderLiveSelectionsList() {
               <i class="fa-solid fa-file-excel"></i>
               <span>Export Excel</span>
             </button>
+            <button onclick="downloadReportExcel('unselected')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer" title="Download Excel sheet of students who have not selected faculty or incomplete selections">
+              <i class="fa-solid fa-user-xmark"></i>
+              <span>Export Pending Students</span>
+            </button>
             <button onclick="openClearSelectionsModal()" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer" title="Reset and clear selections for a new trial run">
               <i class="fa-solid fa-rotate-left"></i>
               <span>Clear Selections</span>
@@ -2824,15 +2828,34 @@ async function loadAdminReports() {
 
     container.innerHTML = `
       <div class="space-y-8">
-        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h3 class="text-base font-bold text-slate-900">Official Allocation & Demand Reports</h3>
             <p class="text-xs text-slate-500">Comprehensive capacity audits, occupancy percentages, and course demand metrics.</p>
           </div>
-          <button onclick="window.print()" class="py-2 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 transition-all self-start sm:self-auto no-print">
-            <i class="fa-solid fa-print"></i>
-            <span>Print Report</span>
-          </button>
+          <div class="flex flex-wrap items-center gap-2 no-print">
+            <select id="report-excel-year" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="ALL">All Academic Years</option>
+              <option value="2">2nd Year Only</option>
+              <option value="3">3rd Year Only</option>
+            </select>
+            <button onclick="downloadReportExcel('selections')" class="py-2 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all">
+              <i class="fa-solid fa-file-excel"></i>
+              <span>Export Selections</span>
+            </button>
+            <button onclick="downloadReportExcel('unselected')" class="py-2 px-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all" title="Download Excel sheet of students who have not selected faculty">
+              <i class="fa-solid fa-user-xmark"></i>
+              <span>Export Pending Students</span>
+            </button>
+            <button onclick="downloadReportExcel('faculty')" class="py-2 px-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all">
+              <i class="fa-solid fa-chalkboard-user"></i>
+              <span>Export Faculty Allocations</span>
+            </button>
+            <button onclick="window.print()" class="py-2 px-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 transition-all">
+              <i class="fa-solid fa-print"></i>
+              <span>Print</span>
+            </button>
+          </div>
         </div>
 
         <!-- Faculty Allocation Table -->
@@ -2998,6 +3021,8 @@ function downloadReportExcel(type) {
   let url = '';
   if (type === 'selections') {
     url = `/api/reports/export-selections-excel?academic_year=${encodeURIComponent(yearSelect)}&token=${encodeURIComponent(STATE.token || '')}`;
+  } else if (type === 'unselected') {
+    url = `/api/reports/export-unselected-students-excel?academic_year=${encodeURIComponent(yearSelect)}&token=${encodeURIComponent(STATE.token || '')}`;
   } else if (type === 'faculty') {
     url = `/api/reports/export-faculty-summary-excel?academic_year=${encodeURIComponent(yearSelect)}&token=${encodeURIComponent(STATE.token || '')}`;
   } else if (type === 'students') {

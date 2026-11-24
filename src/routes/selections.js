@@ -47,8 +47,16 @@ router.get('/my', requireStudent, (req, res) => {
   }
 });
 
-// POST /api/selections/reserve - Student reserves a seat (Server-Side Atomic FCFS)
+// POST /api/selections/reserve - Single subject reservation (disabled: student can confirm only after selecting all faculties)
 router.post('/reserve', requireStudent, (req, res) => {
+  return res.status(400).json({
+    success: false,
+    message: 'Individual course reservations are disabled. You can confirm only after selecting a faculty for all required courses.'
+  });
+});
+
+// Legacy single reservation (kept for reference)
+function legacyReserve(req, res) {
   try {
     const { mapping_id } = req.body;
     const student = req.student;
@@ -224,7 +232,7 @@ router.post('/reserve', requireStudent, (req, res) => {
       message: error.message || 'Seat allocation could not be completed.'
     });
   }
-});
+}
 
 // POST /api/selections/reserve-batch - Complete submission of all subjects at once
 router.post('/reserve-batch', requireStudent, (req, res) => {
@@ -270,6 +278,60 @@ router.post('/reserve-batch', requireStudent, (req, res) => {
       }
       if (now > new Date(currentRound.end_time)) {
         throw new Error(`Selection round "${currentRound.name}" has ended.`);
+      }
+
+      // 2. Strict Full-Selection Validation:
+      // The student can confirm ONLY after selecting a faculty for ALL required courses.
+      const requiredCoreSubjects = db.prepare(`
+        SELECT id, code, name 
+        FROM subjects 
+        WHERE academic_year = ? AND semester = ? AND status = 'ACTIVE' 
+          AND (elective_group IS NULL OR elective_group = 'NONE' OR elective_group = '')
+      `).all(student.academic_year, student.semester);
+
+      const requiredElectiveGroups = db.prepare(`
+        SELECT DISTINCT elective_group 
+        FROM subjects 
+        WHERE academic_year = ? AND semester = ? AND status = 'ACTIVE' 
+          AND elective_group IS NOT NULL AND elective_group != 'NONE' AND elective_group != ''
+      `).all(student.academic_year, student.semester);
+
+      const existingConfirmed = db.prepare(`
+        SELECT sel.id, sel.subject_id, s.code, s.name, s.elective_group
+        FROM selections sel
+        JOIN subjects s ON sel.subject_id = s.id
+        WHERE sel.student_id = ? AND sel.status = 'CONFIRMED'
+      `).all(student.id);
+
+      const submittedMappings = db.prepare(`
+        SELECT m.id, m.subject_id, s.code, s.name, s.elective_group
+        FROM faculty_subject_mappings m
+        JOIN subjects s ON m.subject_id = s.id
+        WHERE m.id IN (${mapping_ids.map(() => '?').join(',')})
+      `).all(...mapping_ids);
+
+      const missingCourses = [];
+
+      for (const core of requiredCoreSubjects) {
+        const hasExisting = existingConfirmed.some(e => e.subject_id === core.id);
+        const hasSubmitted = submittedMappings.some(m => m.subject_id === core.id);
+        if (!hasExisting && !hasSubmitted) {
+          missingCourses.push(`${core.name} (${core.code})`);
+        }
+      }
+
+      for (const eg of requiredElectiveGroups) {
+        const groupKey = eg.elective_group;
+        const hasExisting = existingConfirmed.some(e => e.elective_group === groupKey);
+        const hasSubmitted = submittedMappings.some(m => m.elective_group === groupKey);
+        if (!hasExisting && !hasSubmitted) {
+          const groupName = groupKey === 'OE1' ? 'Professional Elective – I' : (groupKey === 'OE2' ? 'Professional Elective – II' : groupKey);
+          missingCourses.push(groupName);
+        }
+      }
+
+      if (missingCourses.length > 0) {
+        throw new Error(`Incomplete selection: You can confirm only after selecting a faculty for ALL required courses. Missing: ${missingCourses.join(', ')}.`);
       }
 
       const results = [];
