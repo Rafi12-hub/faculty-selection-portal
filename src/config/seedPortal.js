@@ -10,7 +10,8 @@
 const bcrypt = require('bcryptjs');
 const { enforce45 } = require('../../scripts/enforce_45_faculty');
 
-function runAutoSeed(db) {
+function runAutoSeed(databaseInstance) {
+  const db = databaseInstance || require('./database').db;
   try {
     const now = new Date().toISOString();
 
