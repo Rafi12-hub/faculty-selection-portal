@@ -91,7 +91,7 @@ async function runTests() {
     console.log('\n--- 3. Testing Admin Login ---');
     const adminLoginRes = await request('/api/auth/login', {
       method: 'POST',
-      body: { username: 'admin', password: 'admin123', role: 'ADMIN' }
+      body: { username: 'cse@rgmcet.edu.in', password: 'deptcse', role: 'ADMIN' }
     });
     assert(adminLoginRes.status === 200 && adminLoginRes.data.success, 'Admin logs in successfully with default credentials');
     adminToken = adminLoginRes.data.token;

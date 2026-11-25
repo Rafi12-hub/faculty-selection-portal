@@ -29,10 +29,9 @@ router.post('/login', (req, res) => {
         SELECT * FROM users 
         WHERE (
           LOWER(username) = ? 
-          OR LOWER(username) = ? 
-          OR (? IN ('admin', 'cse', 'cse@rgmcet.edu.in') AND role = 'ADMIN')
+          OR LOWER(username) = ?
         ) AND role = 'ADMIN'
-      `).get(inputUser, `${inputUser}@rgmcet.edu.in`, inputUser);
+      `).get(inputUser, `${inputUser}@rgmcet.edu.in`);
     } else {
       // For student, support registration number and college domain email (regno@rgmcet.edu.in)
       const input = username.trim();
@@ -79,7 +78,7 @@ router.post('/login', (req, res) => {
                     bcrypt.compareSync(trimmedPw.toLowerCase(), user.password_hash) ||
                     bcrypt.compareSync(pwClean.toUpperCase(), user.password_hash) ||
                     bcrypt.compareSync(pwClean.toLowerCase(), user.password_hash) ||
-                    (user.role === 'ADMIN' && (trimmedPw === 'deptcse' || trimmedPw === 'admin123' || trimmedPw === 'admin')) ||
+                    (user.role === 'ADMIN' && trimmedPw === 'deptcse') ||
                     trimmedPw === 'student123' ||
                     trimmedPw === 'rgmcet123';
 
