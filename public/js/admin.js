@@ -994,7 +994,11 @@ function renderMappingsList() {
             <i class="fa-solid fa-plus"></i>
             <span>Map Subject to N Faculties</span>
           </button>
-          <button onclick="loadAdminMappings()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all" title="Refresh Mappings">
+          <button onclick="clearYear3Mappings()" class="py-2 px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer" title="Clear all mappings for 3rd Year">
+            <i class="fa-solid fa-trash-can"></i>
+            <span>Clear 3rd Year Mappings</span>
+          </button>
+          <button onclick="loadAdminMappings()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all cursor-pointer" title="Refresh Mappings">
             <i class="fa-solid fa-rotate text-xs"></i>
           </button>
         </div>
@@ -1446,6 +1450,25 @@ async function deleteMappingRecord(id, facultyName, subjectName) {
     showToast(err.message, 'error');
   }
 }
+
+async function clearYear3Mappings() {
+  if (!confirm('Are you sure you want to CLEAR ALL 3rd Year faculty mappings? You will be able to map all faculty members manually according to your choice.')) {
+    return;
+  }
+
+  try {
+    const res = await api.delete('/api/mappings/clear-year/3');
+    if (res && res.success) {
+      showToast(res.message || 'All 3rd Year mappings have been cleared successfully.', 'success');
+      loadAdminMappings();
+    } else {
+      showToast(res.message || 'Failed to clear mappings.', 'error');
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+window.clearYear3Mappings = clearYear3Mappings;
 
 // =========================================================================
 // 5. STUDENT MANAGEMENT (Dataset managed by Administrator)

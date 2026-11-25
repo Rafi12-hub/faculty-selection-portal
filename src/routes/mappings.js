@@ -351,4 +351,43 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// DELETE /api/mappings/clear-year/:year - Clear all mappings for a specific academic year (admin only)
+router.delete('/clear-year/:year', requireAdmin, (req, res) => {
+  try {
+    const year = parseInt(req.params.year, 10);
+    const allocated = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM selections sel
+      JOIN faculty_subject_mappings m ON sel.mapping_id = m.id
+      WHERE m.academic_year = ? AND sel.status = 'CONFIRMED'
+    `).get(year).count;
+
+    if (allocated > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot clear Year ${year} mappings: There are ${allocated} confirmed student selections.`
+      });
+    }
+
+    const info = db.prepare('DELETE FROM faculty_subject_mappings WHERE academic_year = ?').run(year);
+    logAudit(
+      req.user.id,
+      'CLEAR_MAPPINGS',
+      'MAPPING',
+      null,
+      `Cleared all ${info.changes} faculty mappings for Academic Year ${year}`,
+      req.ip
+    );
+
+    res.json({
+      success: true,
+      message: `Successfully cleared all ${info.changes} mappings for Year ${year}.`,
+      cleared_count: info.changes
+    });
+  } catch (error) {
+    console.error('Error clearing mappings for year:', error);
+    res.status(500).json({ success: false, message: 'Failed to clear mappings: ' + error.message });
+  }
+});
+
 module.exports = router;

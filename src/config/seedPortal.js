@@ -91,36 +91,7 @@ function runAutoSeed(databaseInstance) {
       `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
     }
 
-    // Ensure capacity for Group 2 mappings is at least 78 to accommodate 215 students
-    db.prepare("UPDATE faculty_subject_mappings SET capacity = 78 WHERE academic_year = 3 AND target_group = 'Group 2' AND capacity < 78").run();
-
-    // 6. Ensure Mappings exist for Group 1 and Group 2
-    const mapCount = db.prepare("SELECT count(*) as count FROM faculty_subject_mappings").get().count;
-    if (mapCount < 30) {
-      console.log('[AutoSeed] Setting up Group 1 (capacity: 78) and Group 2 (capacity: 62) faculty mappings...');
-      const subs = db.prepare("SELECT id FROM subjects WHERE academic_year = 3 AND semester = 6 ORDER BY id").all();
-      const facs = db.prepare("SELECT id FROM faculty ORDER BY id LIMIT 18").all();
-
-      const insertMap = db.prepare(`
-        INSERT OR IGNORE INTO faculty_subject_mappings (faculty_id, subject_id, academic_year, semester, capacity, target_group, status, created_at)
-        VALUES (?, ?, 3, 6, ?, ?, 'ACTIVE', ?)
-      `);
-
-      // 3 faculty per subject
-      subs.forEach((sub, sIdx) => {
-        const assignedFacs = [
-          facs[(sIdx * 3) % facs.length],
-          facs[(sIdx * 3 + 1) % facs.length],
-          facs[(sIdx * 3 + 2) % facs.length]
-        ];
-        assignedFacs.forEach(f => {
-          if (f) {
-            insertMap.run(f.id, sub.id, 78, 'Group 1', now);
-            insertMap.run(f.id, sub.id, 62, 'Group 2', now);
-          }
-        });
-      });
-    }
+    // 6. Year 3 Mappings: Managed manually by administrator (auto-seed disabled as requested)
 
     // 7. Ensure Open Elective I & II exist with subjects and faculty assignments
     const oeCount = db.prepare("SELECT count(*) as count FROM open_electives").get().count;
