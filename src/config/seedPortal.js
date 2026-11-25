@@ -47,12 +47,13 @@ function runAutoSeed(databaseInstance) {
       }
     }
 
-    // 4. Check 410 3rd Year Students (2024 Batch)
+    // 4. Check 431 3rd Year Students (2024 Batch + Lateral Entry Group A & B)
     const studentCount = db.prepare("SELECT count(*) as count FROM students WHERE academic_year = 3").get().count;
-    if (studentCount < 400) {
-      console.log(`[AutoSeed] Seeding 410 Year 3 students from official PDF (current: ${studentCount})...`);
-      // Run seed_all_students script logic
-      require('../../scripts/seed_all_students');
+    const g1Count = db.prepare("SELECT count(*) as count FROM students WHERE academic_year = 3 AND section = 'Group 1'").get().count;
+    if (studentCount !== 431 || g1Count !== 216) {
+      console.log(`[AutoSeed] Seeding 431 Year 3 students (current total: ${studentCount}, Group 1: ${g1Count})...`);
+      const { seedYear3Students } = require('../../scripts/seed_all_students');
+      seedYear3Students(db);
     }
 
     // 4b. Check 421 2nd Year Students (2025 Batch + Lateral Entry Group B)
@@ -74,21 +75,24 @@ function runAutoSeed(databaseInstance) {
     }
 
     // 5. Ensure Group 1 and Group 2 Selection Rounds exist
-    const roundG1 = db.prepare("SELECT id FROM selection_rounds WHERE target_group = 'Group 1'").get();
+    const roundG1 = db.prepare("SELECT id FROM selection_rounds WHERE academic_year = 3 AND target_group = 'Group 1'").get();
     if (!roundG1) {
       db.prepare(`
         INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-        VALUES ('III-II Faculty Selection - Group 1 (501 to 5E2)', 3, 6, 'Group 1', ?, ?, 'DRAFT', ?)
+        VALUES ('III-II Faculty Selection - Group 1 (Group A)', 3, 6, 'Group 1', ?, ?, 'DRAFT', ?)
       `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
     }
 
-    const roundG2 = db.prepare("SELECT id FROM selection_rounds WHERE target_group = 'Group 2'").get();
+    const roundG2 = db.prepare("SELECT id FROM selection_rounds WHERE academic_year = 3 AND target_group = 'Group 2'").get();
     if (!roundG2) {
       db.prepare(`
         INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-        VALUES ('III-II Faculty Selection - Group 2 (5E3 to 5KP)', 3, 6, 'Group 2', ?, ?, 'DRAFT', ?)
+        VALUES ('III-II Faculty Selection - Group 2 (Group B)', 3, 6, 'Group 2', ?, ?, 'DRAFT', ?)
       `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
     }
+
+    // Ensure capacity for Group 2 mappings is at least 78 to accommodate 215 students
+    db.prepare("UPDATE faculty_subject_mappings SET capacity = 78 WHERE academic_year = 3 AND target_group = 'Group 2' AND capacity < 78").run();
 
     // 6. Ensure Mappings exist for Group 1 and Group 2
     const mapCount = db.prepare("SELECT count(*) as count FROM faculty_subject_mappings").get().count;
@@ -214,7 +218,7 @@ function runAutoSeed(databaseInstance) {
       console.log('[AutoSeed] Open Elective I & II initialized successfully with subjects and faculty capacities.');
     }
 
-    console.log('[AutoSeed] Database check completed successfully: 52 faculty, 6 subjects, 410 students, and cohort rounds active.');
+    console.log('[AutoSeed] Database check completed successfully: 45 faculty, 431 Year 3 students (G1: 216, G2: 215), 421 Year 2 students, and cohort rounds active.');
   } catch (err) {
     console.error('[AutoSeed] Error during autoseed:', err);
   }
