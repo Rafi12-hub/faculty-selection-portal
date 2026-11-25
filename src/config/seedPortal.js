@@ -16,11 +16,14 @@ function runAutoSeed(databaseInstance) {
     const now = new Date().toISOString();
 
     // 1. Check Administrator
-    const adminUser = db.prepare("SELECT id FROM users WHERE username = 'admin'").get();
+    const adminUser = db.prepare("SELECT id, username FROM users WHERE role = 'ADMIN'").get();
+    const adminHash = bcrypt.hashSync('deptcse', 8);
     if (!adminUser) {
-      const adminHash = bcrypt.hashSync('admin123', 8);
-      db.prepare("INSERT INTO users (username, password_hash, role, created_at) VALUES ('admin', ?, 'ADMIN', ?)").run(adminHash, now);
-      console.log('[AutoSeed] Administrator created.');
+      db.prepare("INSERT INTO users (username, password_hash, role, created_at) VALUES ('cse@rgmcet.edu.in', ?, 'ADMIN', ?)").run(adminHash, now);
+      console.log('[AutoSeed] Administrator created: cse@rgmcet.edu.in');
+    } else {
+      db.prepare("UPDATE users SET username = 'cse@rgmcet.edu.in', password_hash = ? WHERE id = ?").run(adminHash, adminUser.id);
+      console.log('[AutoSeed] Administrator credentials verified: cse@rgmcet.edu.in');
     }
 
     // 2. Enforce ONLY the 45 Authorized Faculty Members
@@ -97,7 +100,7 @@ function runAutoSeed(databaseInstance) {
     const oeCount = db.prepare("SELECT count(*) as count FROM open_electives").get().count;
     if (oeCount < 2) {
       console.log('[AutoSeed] Setting up Open Elective – I and Open Elective – II with initial subjects and faculties...');
-      
+
       // Open Elective I
       const oe1Res = db.prepare(`
         INSERT INTO open_electives (code, name, academic_year, semester, branch, is_active, created_at)

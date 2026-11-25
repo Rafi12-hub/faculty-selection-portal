@@ -238,8 +238,8 @@ function switchLoginRole(role) {
   } else {
     tabAdmin.className = 'py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 bg-white text-blue-600 shadow-sm';
     tabStudent.className = 'py-2.5 text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-2 text-slate-600 hover:text-slate-900';
-    labelUsername.textContent = 'Admin Username';
-    inputUsername.placeholder = 'e.g. admin';
+    labelUsername.textContent = 'Admin Email / Username';
+    inputUsername.placeholder = 'e.g. cse@rgmcet.edu.in';
     iconUsername.className = 'fa-solid fa-user-shield';
     helpText.textContent = 'Administrator account manages all faculty, courses, students, and seating capacities.';
   }
@@ -247,8 +247,8 @@ function switchLoginRole(role) {
 
 function fillAdminCredentials() {
   switchLoginRole('ADMIN');
-  document.getElementById('login-username').value = 'admin';
-  document.getElementById('login-password').value = 'admin123';
+  document.getElementById('login-username').value = 'cse@rgmcet.edu.in';
+  document.getElementById('login-password').value = 'deptcse';
 }
 
 async function handleLoginSubmit(e) {

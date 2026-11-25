@@ -278,18 +278,18 @@ function initDatabase() {
   // Ensure default administrator account exists
   const adminCheck = db.prepare('SELECT id FROM users WHERE role = ? LIMIT 1').get('ADMIN');
   if (!adminCheck) {
-    const passwordHash = bcrypt.hashSync('admin123', 10);
+    const passwordHash = bcrypt.hashSync('deptcse', 10);
     const now = new Date().toISOString();
     const insertAdmin = db.prepare('INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)');
-    const result = insertAdmin.run('admin', passwordHash, 'ADMIN', now);
+    const result = insertAdmin.run('cse@rgmcet.edu.in', passwordHash, 'ADMIN', now);
     
     // Log creation in audit logs
     const logStmt = db.prepare(`
       INSERT INTO audit_logs (user_id, action, entity, entity_id, details, ip_address, timestamp)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    logStmt.run(result.lastInsertRowid, 'SYSTEM_INIT', 'SYSTEM', null, 'Initial administrator account created (username: admin)', '127.0.0.1', now);
-    console.log('Default administrator account created with username: admin');
+    logStmt.run(result.lastInsertRowid, 'SYSTEM_INIT', 'SYSTEM', null, 'Initial administrator account created (username: cse@rgmcet.edu.in)', '127.0.0.1', now);
+    console.log('Default administrator account created with username: cse@rgmcet.edu.in');
   }
 }
 

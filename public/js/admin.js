@@ -2433,12 +2433,12 @@ function renderLiveSelectionsList() {
     const g2Selections = selections.filter(s => s.student_section === 'Group 2' && (!roundG2 || s.selection_round_id === roundG2.id || true));
     const g2Confirmed = g2Selections.filter(s => s.status === 'CONFIRMED').length;
 
-    const g1RollText = curYear === 2 
-      ? '25091A0501 to 25091A05CT (501 to 5CT)' 
+    const g1RollText = curYear === 2
+      ? '25091A0501 to 25091A05CT (501 to 5CT)'
       : '24091A0501 to 24091A05DB (501 to 5DB & LE 501–525)';
     const g1CohortText = curYear === 2 ? '190 Students' : '216 Students';
-    const g2RollText = curYear === 2 
-      ? '25091A05CU to 25091A05JN (5CU to 5JN & LE 501–544)' 
+    const g2RollText = curYear === 2
+      ? '25091A05CU to 25091A05JN (5CU to 5JN & LE 501–544)'
       : '24091A05DC to 24091A05KN (5DC to 5KN & LE 526–549)';
     const g2CohortText = curYear === 2 ? '231 Students' : '215 Students';
 

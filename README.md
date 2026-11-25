@@ -99,8 +99,8 @@ The server starts at `http://localhost:5000`.
 ### Default Credentials
 - **Administrator Portal:**
   - Role: `Administrator`
-  - Username: `admin`
-  - Password: `admin123`
+  - Username: `cse@rgmcet.edu.in`
+  - Password: `deptcse`
 
 ---
 
