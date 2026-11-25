@@ -9,14 +9,10 @@ let STUDENT_SELECTIONS = [];
 let ACTIVE_ROUND = null;
 let PENDING_SELECTIONS = {}; // { subjectId: mappingId }
 
-// Friendly alias mappings matching the department's student selection form
-const FACULTY_ALIASES = {
-  'FAC026': 'bhanu',
-  'FAC052': 'rupa',
-  'FAC021': 'hari',
-  'FAC009': 'nagarjuna',
-  'FAC013': 'ram'
-};
+function getFacultyNumber(code) {
+  const match = (code || '').match(/\d+/);
+  return match ? parseInt(match[0], 10) : 999999;
+}
 
 function resolveActiveRound(roundsList, userGroup) {
   if (!roundsList || roundsList.length === 0) return null;
@@ -362,6 +358,7 @@ function renderStudentSubjects() {
     );
     const hasSelection = !!confirmedSelection;
     const subjectMappings = STUDENT_MAPPINGS.filter(m => m.subject_id === subject.id && m.status === 'ACTIVE');
+    subjectMappings.sort((a, b) => getFacultyNumber(a.faculty_code) - getFacultyNumber(b.faculty_code));
     const hasFullFaculty = subjectMappings.some(m => m.availability_status === 'FULL');
 
     return `
@@ -410,7 +407,6 @@ function renderStudentSubjects() {
             }
 
             const isSelected = isConfirmedForThis || (PENDING_SELECTIONS[subject.id] === m.id);
-            const alias = FACULTY_ALIASES[m.faculty_code];
 
             return `
               <div 
@@ -430,7 +426,7 @@ function renderStudentSubjects() {
 
                   <div class="min-w-0">
                     <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
-                      <span>${alias ? `<span class="capitalize text-indigo-900">${alias}</span> <span class="text-slate-500 font-normal text-xs">(${m.faculty_name})</span>` : m.faculty_name}</span>
+                      <span>${m.faculty_name}</span>
                       <span class="w-2.5 h-2.5 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')} flex-shrink-0"></span>
                     </div>
                     <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
@@ -520,6 +516,7 @@ function renderStudentSubjects() {
     const currentSubId = pending.subjectId;
     const currentSubject = oeSubList.find(s => s.id === currentSubId) || oeSubList[0];
     const mappingsForThisGroup = STUDENT_MAPPINGS.filter(m => m.subject_id === currentSubId && m.status === 'ACTIVE');
+    mappingsForThisGroup.sort((a, b) => getFacultyNumber(a.faculty_code) - getFacultyNumber(b.faculty_code));
 
     return `
       <div id="oe-card-${oeKey}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : 'border-indigo-200 ring-2 ring-indigo-500/10'} shadow-sm p-6 space-y-4 transition-all">
@@ -1022,6 +1019,7 @@ async function openFacultySelectionModal(subjectId) {
 
     const subject = res.subject;
     const mappings = subject.faculty_mappings || [];
+    mappings.sort((a, b) => getFacultyNumber(a.faculty_code) - getFacultyNumber(b.faculty_code));
 
     if (mappings.length === 0) {
       openModal({
@@ -1790,6 +1788,7 @@ function renderStudentOpenElectives() {
     // Find selected subject's assigned faculties
     const chosenSubject = subjects.find(s => s.id === pending.subjectId);
     const assignedFaculties = chosenSubject ? (chosenSubject.faculty_assignments || []) : [];
+    assignedFaculties.sort((a, b) => getFacultyNumber(a.faculty_code) - getFacultyNumber(b.faculty_code));
 
     return `
       <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-5 sm:p-6 transition-all">

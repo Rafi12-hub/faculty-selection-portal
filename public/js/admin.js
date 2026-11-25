@@ -44,9 +44,9 @@ function switchAdminTab(tabName) {
   // Route to corresponding tab loader
   switch (tabName) {
     case 'dashboard': loadAdminDashboard(); break;
-    case 'open-electives': 
-    case 'mappings': 
-      loadAdminMappings(); 
+    case 'open-electives':
+    case 'mappings':
+      loadAdminMappings();
       break;
     case 'students': loadAdminStudents(); break;
     case 'faculty': loadAdminFaculty(); break;
@@ -195,7 +195,12 @@ async function loadAdminFaculty() {
 
 function renderFacultyList() {
   const container = document.getElementById('admin-tab-content');
-  const faculty = ADMIN_DATA.faculty;
+  const faculty = ADMIN_DATA.faculty || [];
+  faculty.sort((a, b) => {
+    const na = parseInt((a.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+    const nb = parseInt((b.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+    return na - nb;
+  });
 
   container.innerHTML = `
     <div class="space-y-6">
@@ -1071,12 +1076,17 @@ function renderMappingsList() {
             <div class="text-xs text-slate-400 mt-0.5">Click "Map Subject to N Faculties" to assign faculty members to courses.</div>
           </div>
         ` : subjectGroups.map(group => {
-          const sub = group.subject;
-          const mapList = group.mappings;
-          const subCapacity = mapList.reduce((sum, m) => sum + (m.capacity || 0), 0);
-          const subAllocated = mapList.reduce((sum, m) => sum + (m.allocated_seats || 0), 0);
+    const sub = group.subject;
+    const mapList = group.mappings || [];
+    mapList.sort((a, b) => {
+      const na = parseInt((a.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+      const nb = parseInt((b.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+      return na - nb;
+    });
+    const subCapacity = mapList.reduce((sum, m) => sum + (m.capacity || 0), 0);
+    const subAllocated = mapList.reduce((sum, m) => sum + (m.allocated_seats || 0), 0);
 
-          return `
+    return `
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div class="flex items-center gap-3">
@@ -1113,12 +1123,11 @@ function renderMappingsList() {
                     No faculty members mapped to this course yet. Click "Map More Faculty" to add one.
                   </div>
                 ` : mapList.map(m => {
-                  const rem = m.remaining_seats !== undefined ? m.remaining_seats : (m.capacity - m.allocated_seats);
-                  const isFull = rem <= 0;
-                  const pct = m.capacity > 0 ? Math.round((m.allocated_seats / m.capacity) * 100) : 0;
-                  const alias = (typeof FACULTY_ALIASES !== 'undefined') ? FACULTY_ALIASES[m.faculty_code] : null;
+      const rem = m.remaining_seats !== undefined ? m.remaining_seats : (m.capacity - m.allocated_seats);
+      const isFull = rem <= 0;
+      const pct = m.capacity > 0 ? Math.round((m.allocated_seats / m.capacity) * 100) : 0;
 
-                  return `
+      return `
                     <div class="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
                       <div class="flex items-center gap-3.5">
                         <div class="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-700 text-xs flex-shrink-0">
@@ -1127,7 +1136,6 @@ function renderMappingsList() {
                         <div>
                           <div class="text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                             <span>${m.faculty_name}</span>
-                            ${alias ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 capitalize">Alias: ${alias}</span>` : ''}
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${m.target_group === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (m.target_group === 'Group 2' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-700')}">
                               ${m.target_group === 'Group 1' ? 'Group A (501–5E2)' : (m.target_group === 'Group 2' ? 'Group B (5E3–5KP)' : 'All Cohorts')}
                             </span>
@@ -1163,11 +1171,11 @@ function renderMappingsList() {
                       </div>
                     </div>
                   `;
-                }).join('')}
+    }).join('')}
               </div>
             </div>
           `;
-        }).join('')}
+  }).join('')}
       </div>
     </div>
   `;
@@ -1181,8 +1189,13 @@ function openAddMappingModal(preselectedSubjectId = null) {
 
   const activeSubjects = ADMIN_DATA.subjects.filter(s => s.status === 'ACTIVE');
   const activeFaculty = ADMIN_DATA.faculty.filter(f => f.status === 'ACTIVE');
+  activeFaculty.sort((a, b) => {
+    const na = parseInt((a.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+    const nb = parseInt((b.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+    return na - nb;
+  });
 
-  const defaultSub = preselectedSubjectId 
+  const defaultSub = preselectedSubjectId
     ? activeSubjects.find(s => s.id === preselectedSubjectId) || activeSubjects[0]
     : activeSubjects[0];
 
@@ -2452,11 +2465,11 @@ function renderLiveSelectionsList() {
                 Roll Nos: <strong>${g1RollText}</strong> &bull; Total Cohort: <strong>${g1CohortText}</strong>
               </div>
               <p class="text-xs ${isG1Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
-                ${isG1Active 
-                  ? '🟢 LIVE ACTIVE: Group 1 students can submit choices right now in real time.' 
-                  : (isG1Paused 
-                      ? '⏸️ PAUSED: Group 1 selection is temporarily frozen by administrator.' 
-                      : '⏹️ NOT STARTED: Click below to unlock the portal for Group 1.')}
+                ${isG1Active
+        ? '🟢 LIVE ACTIVE: Group 1 students can submit choices right now in real time.'
+        : (isG1Paused
+          ? '⏸️ PAUSED: Group 1 selection is temporarily frozen by administrator.'
+          : '⏹️ NOT STARTED: Click below to unlock the portal for Group 1.')}
               </p>
             </div>
 
@@ -2475,8 +2488,8 @@ function renderLiveSelectionsList() {
 
             <div class="pt-2">
               ${roundG1 ? (
-                !isG1Active ? (
-                  isG1Paused ? `
+        !isG1Active ? (
+          isG1Paused ? `
                     <div class="flex items-center gap-2">
                       <button onclick="toggleLiveSelection(${roundG1.id}, 'ACTIVE')" class="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all">
                         <i class="fa-solid fa-play"></i>
@@ -2493,7 +2506,7 @@ function renderLiveSelectionsList() {
                       <span>START LIVE SELECTION (GROUP 1)</span>
                     </button>
                   `
-                ) : `
+        ) : `
                   <div class="flex items-center gap-2">
                     <button onclick="toggleLiveSelection(${roundG1.id}, 'PAUSED')" class="flex-1 py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                       <i class="fa-solid fa-pause"></i>
@@ -2505,7 +2518,7 @@ function renderLiveSelectionsList() {
                     </button>
                   </div>
                 `
-              ) : `
+      ) : `
                 <button onclick="switchAdminTab('rounds')" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
                   <i class="fa-solid fa-plus"></i>
                   <span>Configure Group 1 Round</span>
@@ -2532,11 +2545,11 @@ function renderLiveSelectionsList() {
                 Roll Nos: <strong>${g2RollText}</strong> &bull; Total Cohort: <strong>${g2CohortText}</strong>
               </div>
               <p class="text-xs ${isG2Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
-                ${isG2Active 
-                  ? '🟢 LIVE ACTIVE: Group 2 students can submit choices right now in real time.' 
-                  : (isG2Paused 
-                      ? '⏸️ PAUSED: Group 2 selection is temporarily frozen by administrator.' 
-                      : '⏹️ NOT STARTED: Click below to unlock the portal for Group 2.')}
+                ${isG2Active
+        ? '🟢 LIVE ACTIVE: Group 2 students can submit choices right now in real time.'
+        : (isG2Paused
+          ? '⏸️ PAUSED: Group 2 selection is temporarily frozen by administrator.'
+          : '⏹️ NOT STARTED: Click below to unlock the portal for Group 2.')}
               </p>
             </div>
 
@@ -2555,8 +2568,8 @@ function renderLiveSelectionsList() {
 
             <div class="pt-2">
               ${roundG2 ? (
-                !isG2Active ? (
-                  isG2Paused ? `
+        !isG2Active ? (
+          isG2Paused ? `
                     <div class="flex items-center gap-2">
                       <button onclick="toggleLiveSelection(${roundG2.id}, 'ACTIVE')" class="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all">
                         <i class="fa-solid fa-play"></i>
@@ -2573,7 +2586,7 @@ function renderLiveSelectionsList() {
                       <span>START LIVE SELECTION (GROUP 2)</span>
                     </button>
                   `
-                ) : `
+        ) : `
                   <div class="flex items-center gap-2">
                     <button onclick="toggleLiveSelection(${roundG2.id}, 'PAUSED')" class="flex-1 py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                       <i class="fa-solid fa-pause"></i>
@@ -2585,7 +2598,7 @@ function renderLiveSelectionsList() {
                     </button>
                   </div>
                 `
-              ) : `
+      ) : `
                 <button onclick="switchAdminTab('rounds')" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
                   <i class="fa-solid fa-plus"></i>
                   <span>Configure Group 2 Round</span>
@@ -2739,8 +2752,8 @@ async function toggleLiveSelection(roundId, newStatus) {
   try {
     const res = await api.patch(`/api/rounds/${roundId}/status`, { status: newStatus });
     if (res && res.success) {
-      showToast(newStatus === 'ACTIVE' 
-        ? '🟢 Live Selection has been STARTED! Students can now submit their faculty choices.' 
+      showToast(newStatus === 'ACTIVE'
+        ? '🟢 Live Selection has been STARTED! Students can now submit their faculty choices.'
         : `Selection round status changed to ${newStatus}.`, 'success');
       await fetchLiveSelections();
     }
@@ -3232,7 +3245,7 @@ function renderAdminOpenElectivesHTML() {
         <div class="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-sm">
           <div class="text-xs font-medium text-emerald-700">Both Completed</div>
           <div class="text-xl font-bold text-emerald-600 mt-1">${completedCount}</div>
-          <div class="text-[11px] text-emerald-600 mt-0.5">${total3rdYear ? Math.round((completedCount/total3rdYear)*100) : 0}% Registered</div>
+          <div class="text-[11px] text-emerald-600 mt-0.5">${total3rdYear ? Math.round((completedCount / total3rdYear) * 100) : 0}% Registered</div>
         </div>
         <div class="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm">
           <div class="text-xs font-medium text-amber-700">Pending / Incomplete</div>
@@ -3576,7 +3589,7 @@ function renderOEReportRows(registrations) {
   return registrations.map(r => {
     const dt = r.registered_at ? new Date(r.registered_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A';
     return `
-      <tr class="oe-report-row hover:bg-slate-50/70 transition-colors" data-search="${(r.reg_no + ' ' + (r.student_name||'')).toUpperCase()}" data-elective="${r.elective_name || ''}">
+      <tr class="oe-report-row hover:bg-slate-50/70 transition-colors" data-search="${(r.reg_no + ' ' + (r.student_name || '')).toUpperCase()}" data-elective="${r.elective_name || ''}">
         <td class="py-3 px-4 font-mono font-bold text-indigo-700">${r.reg_no}</td>
         <td class="py-3 px-4 font-medium text-slate-900">${r.student_name || 'N/A'}</td>
         <td class="py-3 px-4 text-slate-600">${r.student_section || 'Group 1'}</td>
@@ -3641,7 +3654,7 @@ function exportOEReportsToCSV() {
   const elective = CURRENT_OE_REPORT_FILTERS.electiveId;
 
   const filtered = registrations.filter(r => {
-    const rowSearch = (r.reg_no + ' ' + (r.student_name||'')).toUpperCase();
+    const rowSearch = (r.reg_no + ' ' + (r.student_name || '')).toUpperCase();
     const matchesSearch = !term || rowSearch.includes(term);
     const matchesElective = elective === 'ALL' || r.elective_name === elective;
     return matchesSearch && matchesElective;
@@ -3895,20 +3908,20 @@ function renderOEDemandView() {
             </thead>
             <tbody class="divide-y divide-slate-100">
               ${facultyAllocs.map(fa => {
-                const max = fa.max_capacity || 70;
-                const occ = fa.allocated_count || 0;
-                const pct = max > 0 ? Math.round((occ / max) * 100) : 0;
-                let colorClass = 'bg-emerald-500';
-                let statusLabel = 'Available';
-                if (pct >= 100) {
-                  colorClass = 'bg-rose-500';
-                  statusLabel = 'Full';
-                } else if (pct > 40) {
-                  colorClass = 'bg-amber-500';
-                  statusLabel = 'Filling Fast';
-                }
+    const max = fa.max_capacity || 70;
+    const occ = fa.allocated_count || 0;
+    const pct = max > 0 ? Math.round((occ / max) * 100) : 0;
+    let colorClass = 'bg-emerald-500';
+    let statusLabel = 'Available';
+    if (pct >= 100) {
+      colorClass = 'bg-rose-500';
+      statusLabel = 'Full';
+    } else if (pct > 40) {
+      colorClass = 'bg-amber-500';
+      statusLabel = 'Filling Fast';
+    }
 
-                return `
+    return `
                   <tr class="hover:bg-slate-50/70 transition-colors">
                     <td class="py-3 px-4 font-semibold text-indigo-700">${fa.elective_name}</td>
                     <td class="py-3 px-4 font-medium text-slate-800">${fa.subject_name}</td>
@@ -3932,7 +3945,7 @@ function renderOEDemandView() {
                     </td>
                   </tr>
                 `;
-              }).join('')}
+  }).join('')}
             </tbody>
           </table>
         </div>
@@ -4181,7 +4194,12 @@ async function deleteOESubject(subjectId, encodedName) {
 
 function openAssignOEFacultyModal(preferredSubjectId = null, encodedSubjectName = '') {
   const electives = ADMIN_DATA.openElectives || [];
-  const allFaculty = ADMIN_DATA.faculty || [];
+  const allFaculty = (ADMIN_DATA.faculty || []).slice();
+  allFaculty.sort((a, b) => {
+    const na = parseInt((a.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+    const nb = parseInt((b.faculty_code || '').replace(/\D/g, ''), 10) || 999999;
+    return na - nb;
+  });
 
   if (allFaculty.length === 0) {
     showToast('No faculty members found in database.', 'warning');
@@ -4599,11 +4617,11 @@ function renderAdminEmailsList() {
                   </td>
                 </tr>
               ` : logs.map(l => {
-                const isSent = l.status === 'SENT';
-                const isFailed = l.status === 'FAILED';
-                const isPending = l.status === 'PENDING';
+    const isSent = l.status === 'SENT';
+    const isFailed = l.status === 'FAILED';
+    const isPending = l.status === 'PENDING';
 
-                return `
+    return `
                   <tr class="hover:bg-slate-50/80 transition-colors">
                     <td class="py-3.5 px-6">
                       <div class="font-bold text-slate-900">${l.student_name}</div>
@@ -4670,7 +4688,7 @@ function renderAdminEmailsList() {
                     </td>
                   </tr>
                 `;
-              }).join('')}
+  }).join('')}
             </tbody>
           </table>
         </div>

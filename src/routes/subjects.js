@@ -121,7 +121,7 @@ router.get('/:id', (req, res) => {
       JOIN faculty f ON m.faculty_id = f.id
       WHERE m.subject_id = ? AND m.academic_year = ? AND m.semester = ?
       ${req.user.role === 'STUDENT' ? "AND m.status = 'ACTIVE' AND f.status = 'ACTIVE'" : ""}
-      ORDER BY f.name ASC
+      ORDER BY CAST(SUBSTR(f.faculty_code, 4) AS INTEGER) ASC, f.faculty_code ASC
     `).all(subject.id, subject.academic_year, subject.semester);
 
     const enrichedMappings = mappings.map(m => {

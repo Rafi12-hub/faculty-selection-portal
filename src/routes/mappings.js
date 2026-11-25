@@ -75,7 +75,7 @@ router.get('/', (req, res) => {
       }
     }
 
-    sql += ` ORDER BY m.academic_year ASC, m.semester ASC, s.code ASC, f.name ASC`;
+    sql += ` ORDER BY m.academic_year ASC, m.semester ASC, s.code ASC, CAST(SUBSTR(f.faculty_code, 4) AS INTEGER) ASC, f.faculty_code ASC`;
 
     const mappings = db.prepare(sql).all(...params);
 

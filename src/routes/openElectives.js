@@ -58,7 +58,7 @@ router.get('/', (req, res) => {
         if (isStudent) {
           assignQuery += " AND fa.is_active = 1 AND f.status = 'ACTIVE'";
         }
-        assignQuery += ' ORDER BY f.name ASC';
+        assignQuery += ' ORDER BY CAST(SUBSTR(f.faculty_code, 4) AS INTEGER) ASC, f.faculty_code ASC';
 
         const rawAssignments = db.prepare(assignQuery).all(subject.id);
 
@@ -795,7 +795,7 @@ router.get('/reports', requireAdmin, (req, res) => {
       JOIN faculty f ON fa.faculty_id = f.id
       LEFT JOIN open_elective_registrations oer ON oer.faculty_assignment_id = fa.id AND oer.status = 'CONFIRMED'
       GROUP BY fa.id
-      ORDER BY oe.id ASC, oes.subject_name ASC, f.name ASC
+      ORDER BY oe.id ASC, oes.subject_name ASC, CAST(SUBSTR(f.faculty_code, 4) AS INTEGER) ASC, f.faculty_code ASC
     `).all();
 
     // 5. Completion metric per student

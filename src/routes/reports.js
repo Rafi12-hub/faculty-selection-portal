@@ -91,7 +91,7 @@ router.get('/faculty-allocations', (req, res) => {
       FROM faculty_subject_mappings m
       JOIN faculty f ON m.faculty_id = f.id
       JOIN subjects s ON m.subject_id = s.id
-      ORDER BY f.name ASC, m.academic_year ASC, m.semester ASC
+      ORDER BY CAST(SUBSTR(f.faculty_code, 4) AS INTEGER) ASC, f.faculty_code ASC, m.academic_year ASC, m.semester ASC
     `).all();
 
     const enriched = allocations.map(a => {
@@ -280,7 +280,7 @@ router.get('/export-faculty-summary-excel', (req, res) => {
       params.push(parseInt(academic_year, 10));
     }
 
-    sql += ` ORDER BY m.academic_year ASC, m.semester ASC, sub.code ASC, f.name ASC`;
+    sql += ` ORDER BY m.academic_year ASC, m.semester ASC, sub.code ASC, CAST(SUBSTR(f.faculty_code, 4) AS INTEGER) ASC, f.faculty_code ASC`;
 
     const records = db.prepare(sql).all(...params);
 

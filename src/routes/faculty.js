@@ -47,7 +47,7 @@ router.get('/', (req, res) => {
       params.push(designation);
     }
 
-    sql += ` GROUP BY f.id ORDER BY f.name ASC`;
+    sql += ` GROUP BY f.id ORDER BY CAST(SUBSTR(f.faculty_code, 4) AS INTEGER) ASC, f.faculty_code ASC`;
 
     const facultyList = db.prepare(sql).all(...params);
 
