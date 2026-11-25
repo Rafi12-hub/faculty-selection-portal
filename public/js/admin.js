@@ -2410,10 +2410,14 @@ function renderLiveSelectionsList() {
     const g2Selections = selections.filter(s => s.student_section === 'Group 2' && (!roundG2 || s.selection_round_id === roundG2.id || true));
     const g2Confirmed = g2Selections.filter(s => s.status === 'CONFIRMED').length;
 
-    const g1RollText = curYear === 2 ? '501 to 5CT' : '501 to 5E2';
-    const g1CohortText = curYear === 2 ? '189 Students' : '230 Students';
-    const g2RollText = curYear === 2 ? '5CU to 5JN' : '5E3 to 5KP';
-    const g2CohortText = curYear === 2 ? '188 Students' : '182 Students';
+    const g1RollText = curYear === 2 
+      ? '25091A0501 to 25091A05CT (501 to 5CT)' 
+      : '24091A0501 to 24091A05DB (501 to 5DB & LE 501–525)';
+    const g1CohortText = curYear === 2 ? '190 Students' : '216 Students';
+    const g2RollText = curYear === 2 
+      ? '25091A05CU to 25091A05JN (5CU to 5JN & LE 501–544)' 
+      : '24091A05DC to 24091A05KN (5DC to 5KN & LE 526–549)';
+    const g2CohortText = curYear === 2 ? '231 Students' : '215 Students';
 
     const activeFilter = ADMIN_DATA.liveGroupFilter || 'ALL';
     const displayedSelections = selections.filter(s => {
@@ -2454,7 +2458,7 @@ function renderLiveSelectionsList() {
                 <div class="flex items-center gap-2.5">
                   <span class="w-3.5 h-3.5 rounded-full ${isG1Active ? 'bg-emerald-400 animate-ping' : (isG1Paused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
                   <h3 class="text-base font-black tracking-tight text-white uppercase">
-                    Year ${curYear} &bull; Group 1
+                    Year ${curYear} &bull; GROUP A
                   </h3>
                 </div>
                 <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isG1Active ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isG1Paused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
@@ -2466,10 +2470,10 @@ function renderLiveSelectionsList() {
               </div>
               <p class="text-xs ${isG1Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
                 ${isG1Active
-        ? '🟢 LIVE ACTIVE: Group 1 students can submit choices right now in real time.'
+        ? '🟢 LIVE ACTIVE: GROUP A students can submit choices right now in real time.'
         : (isG1Paused
-          ? '⏸️ PAUSED: Group 1 selection is temporarily frozen by administrator.'
-          : '⏹️ NOT STARTED: Click below to unlock the portal for Group 1.')}
+          ? '⏸️ PAUSED: GROUP A selection is temporarily frozen by administrator.'
+          : '⏹️ NOT STARTED: Click below to unlock the portal for GROUP A.')}
               </p>
             </div>
 
@@ -2493,7 +2497,7 @@ function renderLiveSelectionsList() {
                     <div class="flex items-center gap-2">
                       <button onclick="toggleLiveSelection(${roundG1.id}, 'ACTIVE')" class="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all">
                         <i class="fa-solid fa-play"></i>
-                        <span>RESUME GROUP 1</span>
+                        <span>RESUME GROUP A</span>
                       </button>
                       <button onclick="toggleLiveSelection(${roundG1.id}, 'CLOSED')" class="py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                         <i class="fa-solid fa-stop"></i>
@@ -2503,14 +2507,14 @@ function renderLiveSelectionsList() {
                   ` : `
                     <button onclick="toggleLiveSelection(${roundG1.id}, 'ACTIVE')" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-[0.98]">
                       <i class="fa-solid fa-play text-sm"></i>
-                      <span>START LIVE SELECTION (GROUP 1)</span>
+                      <span>START LIVE SELECTION (GROUP A)</span>
                     </button>
                   `
         ) : `
                   <div class="flex items-center gap-2">
                     <button onclick="toggleLiveSelection(${roundG1.id}, 'PAUSED')" class="flex-1 py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                       <i class="fa-solid fa-pause"></i>
-                      <span>Pause Group 1</span>
+                      <span>Pause GROUP A</span>
                     </button>
                     <button onclick="toggleLiveSelection(${roundG1.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                       <i class="fa-solid fa-stop"></i>
@@ -2521,7 +2525,7 @@ function renderLiveSelectionsList() {
       ) : `
                 <button onclick="switchAdminTab('rounds')" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
                   <i class="fa-solid fa-plus"></i>
-                  <span>Configure Group 1 Round</span>
+                  <span>Configure GROUP A Round</span>
                 </button>
               `}
             </div>
@@ -2534,7 +2538,7 @@ function renderLiveSelectionsList() {
                 <div class="flex items-center gap-2.5">
                   <span class="w-3.5 h-3.5 rounded-full ${isG2Active ? 'bg-emerald-400 animate-ping' : (isG2Paused ? 'bg-amber-400 animate-pulse' : 'bg-slate-500')}"></span>
                   <h3 class="text-base font-black tracking-tight text-white uppercase">
-                    Year ${curYear} &bull; Group 2
+                    Year ${curYear} &bull; GROUP B
                   </h3>
                 </div>
                 <span class="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider ${isG2Active ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : (isG2Paused ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30' : 'bg-slate-700 text-slate-300 border border-slate-600')}">
@@ -2546,10 +2550,10 @@ function renderLiveSelectionsList() {
               </div>
               <p class="text-xs ${isG2Active ? 'text-emerald-200' : 'text-slate-300'} mt-2 leading-relaxed">
                 ${isG2Active
-        ? '🟢 LIVE ACTIVE: Group 2 students can submit choices right now in real time.'
+        ? '🟢 LIVE ACTIVE: GROUP B students can submit choices right now in real time.'
         : (isG2Paused
-          ? '⏸️ PAUSED: Group 2 selection is temporarily frozen by administrator.'
-          : '⏹️ NOT STARTED: Click below to unlock the portal for Group 2.')}
+          ? '⏸️ PAUSED: GROUP B selection is temporarily frozen by administrator.'
+          : '⏹️ NOT STARTED: Click below to unlock the portal for GROUP B.')}
               </p>
             </div>
 
@@ -2573,7 +2577,7 @@ function renderLiveSelectionsList() {
                     <div class="flex items-center gap-2">
                       <button onclick="toggleLiveSelection(${roundG2.id}, 'ACTIVE')" class="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all">
                         <i class="fa-solid fa-play"></i>
-                        <span>RESUME GROUP 2</span>
+                        <span>RESUME GROUP B</span>
                       </button>
                       <button onclick="toggleLiveSelection(${roundG2.id}, 'CLOSED')" class="py-3 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                         <i class="fa-solid fa-stop"></i>
@@ -2583,14 +2587,14 @@ function renderLiveSelectionsList() {
                   ` : `
                     <button onclick="toggleLiveSelection(${roundG2.id}, 'ACTIVE')" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-[0.98]">
                       <i class="fa-solid fa-play text-sm"></i>
-                      <span>START LIVE SELECTION (GROUP 2)</span>
+                      <span>START LIVE SELECTION (GROUP B)</span>
                     </button>
                   `
         ) : `
                   <div class="flex items-center gap-2">
                     <button onclick="toggleLiveSelection(${roundG2.id}, 'PAUSED')" class="flex-1 py-2.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                       <i class="fa-solid fa-pause"></i>
-                      <span>Pause Group 2</span>
+                      <span>Pause GROUP B</span>
                     </button>
                     <button onclick="toggleLiveSelection(${roundG2.id}, 'CLOSED')" class="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer transition-all">
                       <i class="fa-solid fa-stop"></i>
@@ -2601,7 +2605,7 @@ function renderLiveSelectionsList() {
       ) : `
                 <button onclick="switchAdminTab('rounds')" class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5">
                   <i class="fa-solid fa-plus"></i>
-                  <span>Configure Group 2 Round</span>
+                  <span>Configure GROUP B Round</span>
                 </button>
               `}
             </div>
@@ -2666,7 +2670,7 @@ function renderLiveSelectionsList() {
                       <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 text-lg mb-2">
                         <i class="fa-solid fa-satellite-dish"></i>
                       </div>
-                      <div class="font-bold text-slate-700">No Selections Recorded Yet for ${activeFilter === 'ALL' ? 'Any Group' : activeFilter}</div>
+                      <div class="font-bold text-slate-700">No Selections Recorded Yet for ${activeFilter === 'ALL' ? 'Any Group' : (activeFilter === 'Group 1' ? 'GROUP A' : (activeFilter === 'Group 2' ? 'GROUP B' : activeFilter))}</div>
                       <div class="text-xs text-slate-400 mt-0.5">As students confirm faculty selections, they will appear here in real time.</div>
                     </td>
                   </tr>

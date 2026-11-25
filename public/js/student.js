@@ -326,10 +326,10 @@ function renderStudentSubjects() {
           </div>
           <div>
             <div class="font-bold text-xs uppercase tracking-wider text-amber-900">
-              ${isPaused ? `Selection Temporarily Paused for ${STATE.student.section}` : `Selection Window Not Started Yet for ${STATE.student.section}`}
+              ${isPaused ? `Selection Temporarily Paused for ${(STATE.student.section === 'Group 1' || STATE.student.section === 'Group A' || STATE.student.section === 'A') ? 'GROUP A' : 'GROUP B'}` : `Selection Window Not Started Yet for ${(STATE.student.section === 'Group 1' || STATE.student.section === 'Group A' || STATE.student.section === 'A') ? 'GROUP A' : 'GROUP B'}`}
             </div>
             <p class="text-[11px] text-amber-800 mt-0.5">
-              ${isPaused ? 'The administrator has temporarily paused selections for your group. Submissions will resume shortly.' : `Please wait for the administrator to click <strong>"START LIVE SELECTION FOR ${STATE.student.section.toUpperCase()}"</strong> in the admin portal. This questionnaire will automatically unlock in real time!`}
+              ${isPaused ? 'The administrator has temporarily paused selections for your group. Submissions will resume shortly.' : `Please wait for the administrator to click <strong>"START LIVE SELECTION (${(STATE.student.section === 'Group 1' || STATE.student.section === 'Group A' || STATE.student.section === 'A') ? 'GROUP A' : 'GROUP B'})"</strong> in the admin portal. This questionnaire will automatically unlock in real time!`}
             </p>
           </div>
         </div>
