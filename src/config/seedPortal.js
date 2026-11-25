@@ -79,7 +79,7 @@ function runAutoSeed(databaseInstance) {
     if (!roundG1) {
       db.prepare(`
         INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-        VALUES ('III-II Faculty Selection - Group 1 (Group A)', 3, 6, 'Group 1', ?, ?, 'DRAFT', ?)
+        VALUES ('III-II Faculty Selection - GROUP A', 3, 6, 'Group 1', ?, ?, 'DRAFT', ?)
       `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
     }
 
@@ -87,7 +87,7 @@ function runAutoSeed(databaseInstance) {
     if (!roundG2) {
       db.prepare(`
         INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-        VALUES ('III-II Faculty Selection - Group 2 (Group B)', 3, 6, 'Group 2', ?, ?, 'DRAFT', ?)
+        VALUES ('III-II Faculty Selection - GROUP B', 3, 6, 'Group 2', ?, ?, 'DRAFT', ?)
       `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
     }
 

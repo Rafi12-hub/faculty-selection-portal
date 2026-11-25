@@ -396,7 +396,7 @@ function generateConfirmationEmailHtml(student, selections, collegeEmail) {
                   <tr>
                     <td style="padding: 5px 0; color: #64748b;">Academic Cohort:</td>
                     <td style="padding: 5px 0; font-weight: 600; color: #0f172a;">
-                      Year ${student.academic_year} &bull; Semester ${student.semester} &bull; ${student.section === 'Group 1' ? 'Group 1 (Group A: 501–5E2)' : (student.section === 'Group 2' ? 'Group 2 (Group B: 5E3–5KP)' : student.section)}
+                      Year ${student.academic_year} &bull; Semester ${student.semester} &bull; ${(student.section === 'Group 1' || student.section === 'A' || student.section === 'Group A') ? 'GROUP A' : 'GROUP B'}
                     </td>
                   </tr>
                   <tr>

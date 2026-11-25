@@ -38,7 +38,7 @@ function seedYear2Subjects(databaseInstance) {
   if (!roundY2G1) {
     d.prepare(`
       INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-      VALUES ('II-II Faculty Selection - Group 1 (501 to 5CT)', 2, 4, 'Group 1', ?, ?, 'ACTIVE', ?)
+      VALUES ('II-II Faculty Selection - GROUP A', 2, 4, 'Group 1', ?, ?, 'ACTIVE', ?)
     `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
   } else {
     d.prepare("UPDATE selection_rounds SET status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G1.id);
@@ -48,7 +48,7 @@ function seedYear2Subjects(databaseInstance) {
   if (!roundY2G2) {
     d.prepare(`
       INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-      VALUES ('II-II Faculty Selection - Group 2 (5CU to 5JN)', 2, 4, 'Group 2', ?, ?, 'ACTIVE', ?)
+      VALUES ('II-II Faculty Selection - GROUP B', 2, 4, 'Group 2', ?, ?, 'ACTIVE', ?)
     `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
   } else {
     d.prepare("UPDATE selection_rounds SET status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G2.id);

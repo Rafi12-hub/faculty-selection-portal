@@ -1137,7 +1137,7 @@ function renderMappingsList() {
                           <div class="text-sm font-bold text-slate-900 flex items-center gap-2 flex-wrap">
                             <span>${m.faculty_name}</span>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${m.target_group === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (m.target_group === 'Group 2' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-700')}">
-                              ${m.target_group === 'Group 1' ? 'Group A (501–5E2)' : (m.target_group === 'Group 2' ? 'Group B (5E3–5KP)' : 'All Cohorts')}
+                              ${(m.target_group === 'Group 1' || m.target_group === 'A' || m.target_group === 'Group A') ? 'GROUP A' : ((m.target_group === 'Group 2' || m.target_group === 'B' || m.target_group === 'Group B') ? 'GROUP B' : 'All Cohorts')}
                             </span>
                           </div>
                           <div class="text-xs text-slate-500 mt-0.5">
@@ -1218,8 +1218,8 @@ function openAddMappingModal(preselectedSubjectId = null) {
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Target Student Cohort <span class="text-rose-500">*</span></label>
           <select id="map-target-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800">
-            <option value="Group 1">Group 1 / Group A (501 to 5E2 - 230 Students)</option>
-            <option value="Group 2">Group 2 / Group B (5E3 to 5KP - 180 Students)</option>
+            <option value="Group 1">GROUP A</option>
+            <option value="Group 2">GROUP B</option>
             <option value="ALL">All Groups (Shared)</option>
           </select>
         </div>
@@ -1563,7 +1563,7 @@ function renderStudentsList() {
             <h3 class="text-base font-bold text-slate-900">Student Dataset Management (Year-wise & Group-wise)</h3>
           </div>
           <p class="text-xs text-slate-500 mt-1">
-            Browse, filter, and manage both <strong>2nd Year (II-II)</strong> and <strong>3rd Year (III-II)</strong> cohorts partitioned by <strong>Group 1</strong> (501–5E2) and <strong>Group 2</strong> (5E3–5KP).
+            Browse, filter, and manage both <strong>2nd Year (II-II)</strong> and <strong>3rd Year (III-II)</strong> cohorts partitioned by <strong>GROUP A</strong> and <strong>GROUP B</strong>.
           </p>
         </div>
         <div class="flex items-center gap-2 flex-wrap">
@@ -1670,8 +1670,8 @@ function renderStudentsList() {
             <span class="text-slate-500 font-semibold whitespace-nowrap">Group / Section:</span>
             <select id="admin-stu-group-filter" onchange="filterAdminStudents()" class="py-2 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:bg-white">
               <option value="ALL">All Groups</option>
-              <option value="Group 1">Group 1 (501 to 5E2)</option>
-              <option value="Group 2">Group 2 / Group B (5E3 to 5KP)</option>
+              <option value="Group 1">GROUP A</option>
+              <option value="Group 2">GROUP B</option>
             </select>
           </div>
 
@@ -1733,7 +1733,7 @@ function renderStudentsList() {
                   <td class="py-3.5 px-6 font-bold text-slate-800">
                     <span class="px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 ${s.section === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-purple-100 text-purple-800 border border-purple-200'}">
                       <span class="w-1.5 h-1.5 rounded-full ${s.section === 'Group 1' ? 'bg-blue-600' : 'bg-purple-600'}"></span>
-                      ${s.section === 'Group 1' ? 'Group 1 (501–5E2)' : (s.section === 'Group 2' ? 'Group 2 (5E3–5KP)' : s.section)}
+                      ${(s.section === 'Group 1' || s.section === 'A' || s.section === 'Group A') ? 'GROUP A' : ((s.section === 'Group 2' || s.section === 'B' || s.section === 'Group B') ? 'GROUP B' : s.section)}
                     </span>
                   </td>
                   <td class="py-3.5 px-6">
@@ -1862,8 +1862,8 @@ function openAddStudentModal() {
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Group</label>
             <select id="stu-sec-input" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold">
-              <option value="Group 1">Group 1 (501 to 5E2)</option>
-              <option value="Group 2">Group 2 (5E3 to 5KP)</option>
+              <option value="Group 1">GROUP A</option>
+              <option value="Group 2">GROUP B</option>
             </select>
           </div>
         </div>
@@ -2044,8 +2044,8 @@ function openEditStudentModal(id) {
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Group</label>
             <select id="edit-stu-sec" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-              <option value="Group 1" ${s.section === 'Group 1' ? 'selected' : ''}>Group 1 (501 to 5E2)</option>
-              <option value="Group 2" ${s.section === 'Group 2' ? 'selected' : ''}>Group 2 / Group B (5E3 to 5KP)</option>
+              <option value="Group 1" ${s.section === 'Group 1' ? 'selected' : ''}>GROUP A</option>
+              <option value="Group 2" ${s.section === 'Group 2' ? 'selected' : ''}>GROUP B</option>
             </select>
           </div>
         </div>
@@ -2166,7 +2166,7 @@ function renderRoundsList() {
                   <td class="py-3.5 px-6 font-bold text-slate-900">${r.name}</td>
                   <td class="py-3.5 px-6">
                     <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${r.target_group === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (r.target_group === 'Group 2' ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-slate-100 text-slate-700')}">
-                      ${r.target_group === 'Group 1' ? 'Group 1 (501–5E2)' : (r.target_group === 'Group 2' ? 'Group 2 (5E3–5KP)' : 'All Students')}
+                      ${(r.target_group === 'Group 1' || r.target_group === 'A' || r.target_group === 'Group A') ? 'GROUP A' : ((r.target_group === 'Group 2' || r.target_group === 'B' || r.target_group === 'Group B') ? 'GROUP B' : 'All Students')}
                     </span>
                   </td>
                   <td class="py-3.5 px-6 font-semibold text-slate-700">Year ${r.academic_year} &bull; Sem ${r.semester}</td>
@@ -2215,8 +2215,8 @@ function openAddRoundModal() {
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Target Student Cohort <span class="text-rose-500">*</span></label>
           <select id="round-target-group" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800">
-            <option value="Group 1">Group 1 / Group A (501 to 5E2 - 230 Students)</option>
-            <option value="Group 2">Group 2 / Group B (5E3 to 5KP - 180 Students)</option>
+            <option value="Group 1">GROUP A</option>
+            <option value="Group 2">GROUP B</option>
             <option value="ALL">All Students (Combined)</option>
           </select>
         </div>
@@ -2625,10 +2625,10 @@ function renderLiveSelectionsList() {
               All Cohorts (${selections.length})
             </button>
             <button onclick="filterLiveGroup('Group 1')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeFilter === 'Group 1' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}">
-              Group 1 (${g1Confirmed})
+              GROUP A (${g1Confirmed})
             </button>
             <button onclick="filterLiveGroup('Group 2')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeFilter === 'Group 2' ? 'bg-purple-600 text-white shadow-sm' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}">
-              Group 2 (${g2Confirmed})
+              GROUP B (${g2Confirmed})
             </button>
             <button onclick="downloadReportExcel('selections')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1.5 transition-all cursor-pointer">
               <i class="fa-solid fa-file-excel"></i>
@@ -2678,7 +2678,7 @@ function renderLiveSelectionsList() {
                     </td>
                     <td class="py-3.5 px-6">
                       <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${s.student_section === 'Group 1' ? 'bg-blue-100 text-blue-800 border border-blue-200' : (s.student_section === 'Group 2' ? 'bg-purple-100 text-purple-800 border border-purple-200' : 'bg-slate-100 text-slate-700')}">
-                        ${s.student_section === 'Group 1' ? 'Group 1 (501–5E2)' : (s.student_section === 'Group 2' ? 'Group 2 (5E3–5KP)' : s.student_section)}
+                        ${(s.student_section === 'Group 1' || s.student_section === 'A' || s.student_section === 'Group A') ? 'GROUP A' : ((s.student_section === 'Group 2' || s.student_section === 'B' || s.student_section === 'Group B') ? 'GROUP B' : s.student_section)}
                       </span>
                     </td>
                     <td class="py-3.5 px-6">

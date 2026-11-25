@@ -89,7 +89,8 @@ async function initStudentPortal() {
   document.getElementById('stu-disp-year').textContent = `Year ${STATE.student.academic_year}`;
   document.getElementById('stu-disp-sem').textContent = `Sem ${STATE.student.semester}`;
   const sec = STATE.student.section || '';
-  document.getElementById('stu-disp-sec').textContent = sec.startsWith('Group') ? sec : `Group ${sec}`;
+  const groupLabel = (sec === 'Group 1' || sec === 'A' || sec === 'Group A') ? 'GROUP A' : ((sec === 'Group 2' || sec === 'B' || sec === 'Group B') ? 'GROUP B' : (sec.startsWith('Group') ? sec.toUpperCase() : `GROUP ${sec.toUpperCase()}`));
+  document.getElementById('stu-disp-sec').textContent = groupLabel;
 
   await loadStudentData();
 
@@ -311,7 +312,7 @@ function renderStudentSubjects() {
 
       <div class="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
         <div>
-          Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; <span class="px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">${STATE.student.section === 'Group 1' ? 'Group 1 (Group A: 501–5E2)' : (STATE.student.section === 'Group 2' ? 'Group 2 (Group B: 5E3–5KP)' : STATE.student.section)}</span>
+          Candidate: <strong class="text-slate-900">${STATE.student.name}</strong> (<span class="mono-font">${STATE.student.reg_no}</span>) &bull; <span class="px-2.5 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">${(STATE.student.section === 'Group 1' || STATE.student.section === 'Group A' || STATE.student.section === 'A') ? 'GROUP A' : 'GROUP B'}</span>
         </div>
         <div class="font-medium text-slate-700">
           Academic Year ${STATE.student.academic_year} &bull; Semester ${STATE.student.semester}
@@ -362,7 +363,7 @@ function renderStudentSubjects() {
     const hasFullFaculty = subjectMappings.some(m => m.availability_status === 'FULL');
 
     return `
-      <div id="subject-card-${subject.id}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : (hasFullFaculty && !PENDING_SELECTIONS[subject.id] ? 'border-amber-300 ring-2 ring-amber-400/20' : 'border-slate-200')} shadow-sm p-6 space-y-4 transition-all">
+      <div id="subject-card-${subject.id}" class="bg-white rounded-2xl border ${hasSelection ? 'border-emerald-300 ring-2 ring-emerald-500/10' : (hasFullFaculty && !PENDING_SELECTIONS[subject.id] ? 'border-amber-300 ring-2 ring-amber-400/20' : 'border-slate-200')} shadow-sm p-4 sm:p-6 space-y-4 transition-all">
         <div class="flex items-start justify-between gap-3">
           <div>
             <h3 class="text-base sm:text-lg font-bold text-slate-900">
@@ -411,35 +412,34 @@ function renderStudentSubjects() {
             return `
               <div 
                 onclick="${(isLiveActive && !hasSelection && !isFull) ? `setPendingSelection(${subject.id}, ${m.id})` : ''}"
-                class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected
+                class="flex items-start sm:items-center justify-between p-3 sm:p-4 rounded-xl border transition-all ${isSelected
                   ? (hasSelection ? 'border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-400' : 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25')
                   : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm hover:shadow' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))
                 }">
                 
-                <div class="flex items-center gap-3.5 min-w-0">
-                  <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected
+                <div class="flex items-start sm:items-center gap-3 sm:gap-3.5 flex-1 min-w-0">
+                  <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 mt-0.5 sm:mt-0 ${isSelected
                     ? (hasSelection ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-indigo-600 bg-indigo-600 text-white')
                     : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')
                   }">
                     ${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
                   </div>
 
-                  <div class="min-w-0">
-                    <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
+                  <div class="flex-1 min-w-0 pr-1">
+                    <div class="text-sm sm:text-base font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} break-words whitespace-normal leading-snug">
                       <span>${m.faculty_name}</span>
-                      <span class="w-2.5 h-2.5 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')} flex-shrink-0"></span>
                     </div>
                     <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
                       <span class="w-2 h-2 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500')}"></span>
                       <span>${isFull ? 'Full (Faculty Capacity Reached)' : (isFillingFast ? 'Filling Fast' : 'Available')}</span>
                     </div>
-                    <div class="text-[11px] text-slate-500 truncate mt-0.5">
+                    <div class="text-[11px] text-slate-500 break-words mt-0.5">
                       ${m.faculty_designation} &bull; ${m.faculty_qualification}
                     </div>
                   </div>
                 </div>
 
-                <div class="flex items-center gap-2 flex-shrink-0 pl-2">
+                <div class="hidden sm:flex items-center gap-2 flex-shrink-0 pl-2">
                   ${isFull ? `
                     <div class="text-right">
                       <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-700 border border-rose-300">
@@ -577,7 +577,7 @@ function renderStudentSubjects() {
           <div class="space-y-2 pt-2 border-t border-slate-100">
             <div class="text-xs font-bold text-slate-700 flex items-center gap-2">
               <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black">2</span>
-              <span>Choose Faculty for ${currentSubject ? currentSubject.name : 'Selected Subject'} (${STATE.student.section === 'Group 1' ? 'Group A: 501–5E2' : (STATE.student.section === 'Group 2' ? 'Group B: 5E3–5KP' : STATE.student.section)}):</span>
+              <span>Choose Faculty for ${currentSubject ? currentSubject.name : 'Selected Subject'} (${(STATE.student.section === 'Group 1' || STATE.student.section === 'Group A' || STATE.student.section === 'A') ? 'GROUP A' : 'GROUP B'}):</span>
             </div>
             <div class="space-y-2.5">
               ${mappingsForThisGroup.length === 0 ? `
@@ -600,27 +600,26 @@ function renderStudentSubjects() {
                 }
 
                 return `
-                  <div onclick="${(isLiveActive && !isFull) ? `selectInternalOEMapping('${oeKey}', ${m.id})` : ''}" class="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25' : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))}">
-                    <div class="flex items-center gap-3.5 min-w-0">
-                      <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
+                  <div onclick="${(isLiveActive && !isFull) ? `selectInternalOEMapping('${oeKey}', ${m.id})` : ''}" class="flex items-start sm:items-center justify-between p-3 sm:p-4 rounded-xl border transition-all ${isSelected ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/25' : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-75 cursor-not-allowed' : (isLiveActive ? 'border-slate-200 hover:border-indigo-400 hover:bg-slate-50 cursor-pointer shadow-sm' : 'border-slate-200 bg-slate-50/50 cursor-not-allowed opacity-80'))}">
+                    <div class="flex items-start sm:items-center gap-3 sm:gap-3.5 flex-1 min-w-0">
+                      <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 mt-0.5 sm:mt-0 ${isSelected ? 'border-indigo-600 bg-indigo-600 text-white' : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
                         ${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
                       </div>
-                      <div class="min-w-0">
-                        <div class="text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
+                      <div class="flex-1 min-w-0 pr-1">
+                        <div class="text-sm sm:text-base font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} break-words whitespace-normal leading-snug">
                           <span>${m.faculty_name}</span>
-                          <span class="w-2.5 h-2.5 rounded-full ${indicatorBg} flex-shrink-0"></span>
                         </div>
                         <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
                           <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
                           <span>${statusText}</span>
                         </div>
-                        <div class="text-[11px] text-slate-500 truncate mt-0.5">
+                        <div class="text-[11px] text-slate-500 break-words mt-0.5">
                           ${m.faculty_designation || 'Department Faculty'} &bull; ${m.faculty_qualification || 'M.Tech / Ph.D'}
                         </div>
                       </div>
                     </div>
 
-                    <div class="flex items-center gap-2 flex-shrink-0 pl-2">
+                    <div class="hidden sm:flex items-center gap-2 flex-shrink-0 pl-2">
                       <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${isFull ? 'bg-rose-100 text-rose-700 border border-rose-300' : (isFillingFast ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300')}">
                         <span class="w-2 h-2 rounded-full ${indicatorBg}"></span>
                         <span>${statusText}</span>
@@ -1051,7 +1050,7 @@ async function openFacultySelectionModal(subjectId) {
             </div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between gap-2">
-                <h5 class="text-base font-bold text-slate-900 truncate">${m.faculty_name}</h5>
+                <h5 class="text-base font-bold text-slate-900 break-words">${m.faculty_name}</h5>
                 <span class="mono-font text-[11px] px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">${m.faculty_code}</span>
               </div>
               <div class="text-xs font-semibold text-blue-600 mt-0.5">${m.designation} &bull; ${m.qualification}</div>
@@ -1906,31 +1905,34 @@ function renderStudentOpenElectives() {
                       return `
                         <div 
                           onclick="${!isFull ? `selectOEFaculty(${elective.id}, ${fa.assignment_id})` : ''}"
-                          class="p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${isFacSelected
+                          class="p-3 sm:p-3.5 rounded-xl border transition-all flex items-start sm:items-center justify-between gap-3 ${isFacSelected
                             ? 'border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/25 cursor-pointer'
                             : (isFull ? 'border-rose-200 bg-rose-50/40 opacity-70 cursor-not-allowed' : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-slate-50 cursor-pointer shadow-sm')}">
                           
-                          <div class="flex items-center gap-3 min-w-0">
+                          <div class="flex items-start sm:items-center gap-3 flex-1 min-w-0">
                             <!-- Radio Oval -->
-                            <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${isFacSelected
+                            <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all mt-0.5 sm:mt-0 ${isFacSelected
                               ? 'border-indigo-600 bg-indigo-600 text-white'
                               : (isFull ? 'border-rose-300 bg-rose-100 text-rose-500' : 'border-slate-400 bg-white hover:border-indigo-500')}">
                               ${isFacSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : (isFull ? '<i class="fa-solid fa-xmark text-[10px]"></i>' : '')}
                             </div>
 
-                            <div class="min-w-0">
-                              <div class="text-xs font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} truncate flex items-center gap-2">
+                            <div class="flex-1 min-w-0 pr-1">
+                              <div class="text-xs sm:text-sm font-bold ${isFull ? 'text-slate-500' : 'text-slate-900'} break-words whitespace-normal leading-snug">
                                 <span>${fa.faculty_name}</span>
-                                <span class="w-2 h-2 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500')} flex-shrink-0"></span>
                               </div>
-                              <div class="text-[11px] text-slate-500 truncate mt-0.5">
+                              <div class="mt-1 inline-flex items-center gap-1.5 text-[11px] font-bold ${isFull ? 'text-rose-700' : (isFillingFast ? 'text-amber-800' : 'text-emerald-700')}">
+                                <span class="w-2 h-2 rounded-full ${isFull ? 'bg-rose-500' : (isFillingFast ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500')}"></span>
+                                <span>${isFull ? 'Faculty Capacity Reached' : (isFillingFast ? 'Filling Fast' : 'Available')}</span>
+                              </div>
+                              <div class="text-[11px] text-slate-500 break-words mt-0.5">
                                 ${fa.designation || 'Faculty'} &bull; ${fa.qualification || 'B.Tech / M.Tech / Ph.D'}
                               </div>
                             </div>
                           </div>
 
-                          <!-- Availability Indicator Badge (No numeric seats exposed) -->
-                          <div class="flex items-center gap-2 flex-shrink-0">
+                          <!-- Availability Indicator Badge (Desktop only to prevent crushing name on mobile) -->
+                          <div class="hidden sm:flex items-center gap-2 flex-shrink-0">
                             ${isFull ? `
                               <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
                                 <span class="w-2 h-2 rounded-full bg-rose-500"></span>
