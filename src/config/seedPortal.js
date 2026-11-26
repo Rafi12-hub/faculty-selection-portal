@@ -77,12 +77,24 @@ function runAutoSeed(databaseInstance) {
       seedYear2Subjects(db);
     }
 
-    // 5. Ensure Group 1 and Group 2 Selection Rounds exist
+    // 5. Ensure Group 1 and Group 2 Selection Rounds exist and have clean names
+    db.prepare(`
+      UPDATE selection_rounds 
+      SET name = 'III-II Faculty Selection - Group 1' 
+      WHERE academic_year = 3 AND (target_group = 'Group 1' OR target_group = 'Group A' OR target_group = 'A' OR name LIKE '%III-II%Group 1%')
+    `).run();
+
+    db.prepare(`
+      UPDATE selection_rounds 
+      SET name = 'III-II Faculty Selection - Group 2' 
+      WHERE academic_year = 3 AND (target_group = 'Group 2' OR target_group = 'Group B' OR target_group = 'B' OR name LIKE '%III-II%Group 2%')
+    `).run();
+
     const roundG1 = db.prepare("SELECT id FROM selection_rounds WHERE academic_year = 3 AND target_group = 'Group 1'").get();
     if (!roundG1) {
       db.prepare(`
         INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-        VALUES ('III-II Faculty Selection - GROUP A', 3, 6, 'Group 1', ?, ?, 'DRAFT', ?)
+        VALUES ('III-II Faculty Selection - Group 1', 3, 6, 'Group 1', ?, ?, 'DRAFT', ?)
       `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
     }
 
@@ -90,7 +102,7 @@ function runAutoSeed(databaseInstance) {
     if (!roundG2) {
       db.prepare(`
         INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-        VALUES ('III-II Faculty Selection - GROUP B', 3, 6, 'Group 2', ?, ?, 'DRAFT', ?)
+        VALUES ('III-II Faculty Selection - Group 2', 3, 6, 'Group 2', ?, ?, 'DRAFT', ?)
       `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
     }
 

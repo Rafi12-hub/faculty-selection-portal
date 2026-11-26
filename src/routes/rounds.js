@@ -38,10 +38,15 @@ router.get('/', (req, res) => {
     sql += ` ORDER BY CASE WHEN status = 'ACTIVE' THEN 0 WHEN status = 'PAUSED' THEN 1 ELSE 2 END, created_at DESC`;
     const rounds = db.prepare(sql).all(...params);
 
-    // Calculate selection count for each round
+    // Calculate selection count for each round and format clean round name without roll numbers
     const enriched = rounds.map(r => {
       const count = db.prepare("SELECT COUNT(*) as count FROM selections WHERE selection_round_id = ? AND status = 'CONFIRMED'").get(r.id).count;
-      return { ...r, total_confirmed_selections: count };
+      let cleanName = (r.name || '')
+        .replace(/\s*\([^)]*\d+[^)]*\)/g, '')
+        .replace(/\s*-\s*GROUP\s*A\b/gi, ' - Group 1')
+        .replace(/\s*-\s*GROUP\s*B\b/gi, ' - Group 2')
+        .trim();
+      return { ...r, name: cleanName || r.name, total_confirmed_selections: count };
     });
 
     res.json({ success: true, rounds: enriched });

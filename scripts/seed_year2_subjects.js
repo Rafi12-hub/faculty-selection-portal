@@ -38,20 +38,20 @@ function seedYear2Subjects(databaseInstance) {
   if (!roundY2G1) {
     d.prepare(`
       INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-      VALUES ('II-II Faculty Selection - GROUP A', 2, 4, 'Group 1', ?, ?, 'ACTIVE', ?)
+      VALUES ('II-II Faculty Selection - Group 1', 2, 4, 'Group 1', ?, ?, 'ACTIVE', ?)
     `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
   } else {
-    d.prepare("UPDATE selection_rounds SET status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G1.id);
+    d.prepare("UPDATE selection_rounds SET name = 'II-II Faculty Selection - Group 1', status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G1.id);
   }
 
   const roundY2G2 = d.prepare("SELECT id FROM selection_rounds WHERE academic_year = 2 AND semester = 4 AND target_group = 'Group 2'").get();
   if (!roundY2G2) {
     d.prepare(`
       INSERT INTO selection_rounds (name, academic_year, semester, target_group, start_time, end_time, status, created_at)
-      VALUES ('II-II Faculty Selection - GROUP B', 2, 4, 'Group 2', ?, ?, 'ACTIVE', ?)
+      VALUES ('II-II Faculty Selection - Group 2', 2, 4, 'Group 2', ?, ?, 'ACTIVE', ?)
     `).run(now, new Date(Date.now() + 30 * 86400000).toISOString(), now);
   } else {
-    d.prepare("UPDATE selection_rounds SET status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G2.id);
+    d.prepare("UPDATE selection_rounds SET name = 'II-II Faculty Selection - Group 2', status = 'ACTIVE', start_time = ? WHERE id = ?").run(now, roundY2G2.id);
   }
 
   // Also make sure Year 3 rounds are ACTIVE for testing

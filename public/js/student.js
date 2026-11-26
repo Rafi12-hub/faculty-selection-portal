@@ -32,6 +32,15 @@ function resolveActiveRound(roundsList, userGroup) {
   return roundsList.find(r => r.target_group === userGroup) || roundsList.find(r => r.target_group === 'ALL') || roundsList[0];
 }
 
+function formatCleanRoundName(rawName) {
+  if (!rawName) return '';
+  return rawName
+    .replace(/\s*\([^)]*\d+[^)]*\)/g, '')
+    .replace(/\s*-\s*GROUP\s*A\b/gi, ' - Group 1')
+    .replace(/\s*-\s*GROUP\s*B\b/gi, ' - Group 2')
+    .trim();
+}
+
 let PENDING_OE_INTERNAL = {
   'OE1': { subjectId: null, mappingId: null },
   'OE2': { subjectId: null, mappingId: null }
@@ -199,7 +208,7 @@ async function loadStudentData() {
     const roundBadge = document.getElementById('stu-round-badge');
     const roundName = document.getElementById('stu-round-name');
     if (ACTIVE_ROUND) {
-      roundName.textContent = ACTIVE_ROUND.name;
+      roundName.textContent = formatCleanRoundName(ACTIVE_ROUND.name);
       roundBadge.classList.remove('hidden');
     } else {
       roundBadge.classList.add('hidden');
@@ -284,7 +293,7 @@ function renderStudentSubjects() {
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 class="text-2xl font-black text-slate-900 tracking-tight">
-            ${ACTIVE_ROUND ? ACTIVE_ROUND.name : `Year ${STATE.student ? STATE.student.academic_year : ''} Faculty Selection`}
+            ${ACTIVE_ROUND ? formatCleanRoundName(ACTIVE_ROUND.name) : `Year ${STATE.student ? STATE.student.academic_year : ''} Faculty Selection`}
           </h2>
           <p class="text-xs font-semibold ${isLiveActive ? 'text-emerald-700' : 'text-amber-700'} mt-1 uppercase tracking-wider">
             Department of Computer Science and Engineering
